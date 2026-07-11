@@ -257,7 +257,7 @@
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // 🔴 REPLACE THIS WITH YOUR OWN FIREBASE CONFIGURATION OBJECT FROM CONSOLE
-    const firebaseConfig = {
+   const firebaseConfig = {
   apiKey: "AIzaSyCfXnKMYsJnbBXqgp7Mq7s-ierLgI_ihs8",
   authDomain: "lab-disposables.firebaseapp.com",
   databaseURL: "https://lab-disposables-default-rtdb.firebaseio.com",
@@ -304,7 +304,7 @@
         renderMatrix();
     });
 
-    // Fixed File Upload Cloud Insertion Handler
+    // Flexible File Upload Cloud Insertion Handler
     async function handleMasterFileUpload(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -327,20 +327,22 @@
                 let parsedSuppliers = [];
                 let supplierColumns = {};
 
-                // Map header configurations cleanly
+                // Map header configurations safely (Handles "Quantity per unit", "UOM", "Price", and "Price List")
                 for (let i = 1; i < headers.length; i++) {
                     let headerStr = String(headers[i]).trim();
                     if (!headerStr) continue;
 
-                    if (headerStr.toLowerCase().startsWith("quantity per unit") || headerStr.toLowerCase().startsWith("uom")) {
+                    let lowerHeader = headerStr.toLowerCase();
+
+                    if (lowerHeader.startsWith("quantity per unit") || lowerHeader.startsWith("uom")) {
                         let supplierName = headerStr.replace(/quantity per unit/i, "").replace(/uom/i, "").trim();
                         if (supplierName) {
                             if (!parsedSuppliers.includes(supplierName)) parsedSuppliers.push(supplierName);
                             if (!supplierColumns[supplierName]) supplierColumns[supplierName] = {};
                             supplierColumns[supplierName].uom = i;
                         }
-                    } else if (headerStr.toLowerCase().includes("price")) {
-                        let supplierName = headerStr.replace(/price.*$/i, "").trim();
+                    } else if (lowerHeader.includes("price") || lowerHeader.includes("price list")) {
+                        let supplierName = headerStr.replace(/price list/i, "").replace(/price.*$/i, "").trim();
                         if (!supplierName && parsedSuppliers.length > 0) {
                             supplierName = parsedSuppliers[parsedSuppliers.length - 1];
                         }
@@ -352,11 +354,12 @@
                     }
                 }
 
-                // Fallback column indexing support if headers are standard
+                // Fallback structured index check if the advanced filter yielded nothing
                 if (parsedSuppliers.length === 0) {
                     for (let i = 2; i < headers.length; i++) {
                         let headerStr = String(headers[i]).trim();
-                        if (headerStr.toLowerCase().includes("price")) {
+                        let lowerHeader = headerStr.toLowerCase();
+                        if (lowerHeader.includes("price") || lowerHeader.includes("price list")) {
                             let supplierName = headers[i-1] ? String(headers[i-1]).trim() : `Supplier ${i}`;
                             if (!parsedSuppliers.includes(supplierName)) parsedSuppliers.push(supplierName);
                             if (!supplierColumns[supplierName]) supplierColumns[supplierName] = {};
@@ -367,7 +370,7 @@
                 }
 
                 if (parsedSuppliers.length === 0) {
-                    alert("Could not extract suppliers. Verify file headers mapping parameters.");
+                    alert("Could not extract suppliers. Ensure columns contain valid 'Quantity per unit', 'UOM', or 'Price' keywords.");
                     syncIndicator.innerText = "☁️ Firebase Synced";
                     return;
                 }
@@ -377,7 +380,7 @@
                 // Update cloud master list definitions document
                 await setDoc(doc(db, "matrix_config", "suppliers"), { list: parsedSuppliers });
 
-                // Push rows to Firestore using chunked batch sizes (max 500 records per Firestore standard batch write limit)
+                // Push rows to Firestore using chunks of max 400 mutations
                 let currentBatch = writeBatch(db);
                 let operationsCounter = 0;
                 
