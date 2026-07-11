@@ -187,6 +187,12 @@
             background: white;
             outline: none;
         }
+        
+        .status-sync {
+            font-size: 12px;
+            color: var(--secondary-color);
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -195,9 +201,10 @@
     <header>
         <div>
             <h1>Master Supplier Comparison & Evaluation Grid</h1>
-            <p>Unified data entries with row-level updating controls and structural columns extraction features.</p>
+            <p>Unified cloud synchronization entries with real-time Firebase tracking system configurations.</p>
         </div>
         <div class="actions-bar">
+            <span id="sync-indicator" class="status-sync">🔄 Connecting to Firebase...</span>
             <label class="btn btn-info" style="margin: 0; cursor: pointer;">
                 📂 Upload Master Data
                 <input type="file" id="upload-master-file" accept=".xlsx, .xls, .csv" style="display: none;">
@@ -243,49 +250,79 @@
     </div>
 </div>
 
-<script>
-    // System Local Core State Memory Variables
-    let masterSuppliers = ["Deep Seas", "Jasmin medical", "عدنان البركه"];
-    let matrixDatabase = [
-        {
-            item: "Cotton Roll",
-            prices: {
-                "Deep Seas": { uom: "0.5Kg", price: "2.9" },
-                "Jasmin medical": { uom: "0.5Kg", price: "2.75" },
-                "عدنان البركه": { uom: "0.5Kg", price: "2.75" }
-            }
-        },
-        {
-            item: "3cc,5cc Syringes",
-            prices: {
-                "Deep Seas": { uom: "100/box", price: "2.5" },
-                "Jasmin medical": { uom: "100/box", price: "3" },
-                "عدنان البركه": { uom: "100/box", price: "4" }
-            }
-        }
-    ];
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+        getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteDoc, collection, writeBatch
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // 🔴 REPLACE THIS WITH YOUR OWN FIREBASE CONFIGURATION OBJECT FROM CONSOLE
+  const firebaseConfig = {
+  apiKey: "AIzaSyCfXnKMYsJnbBXqgp7Mq7s-ierLgI_ihs8",
+  authDomain: "lab-disposables.firebaseapp.com",
+  databaseURL: "https://lab-disposables-default-rtdb.firebaseio.com",
+  projectId: "lab-disposables",
+  storageBucket: "lab-disposables.firebasestorage.app",
+  messagingSenderId: "845647001477",
+  appId: "1:845647001477:web:b8f40a2e0fe280c5dbf6ec"
+};
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Global Core States
+    let masterSuppliers = [];
+    let matrixDatabase = [];
 
     const searchInput = document.getElementById('search-input');
+    const syncIndicator = document.getElementById('sync-indicator');
+    
     document.getElementById('upload-master-file').addEventListener('change', handleMasterFileUpload);
     searchInput.addEventListener('input', renderMatrix);
 
-    // File Upload Excel Extraction Logic Handler Function
-    function handleMasterFileUpload(e) {
+    // 🟢 Real-time Sync listeners for Firebase
+    // 1. Sync Suppliers Document
+    onSnapshot(doc(db, "matrix_config", "suppliers"), (docSnap) => {
+        if (docSnap.exists()) {
+            masterSuppliers = docSnap.data().list || [];
+        } else {
+            // Seed defaults if database collection layout completely empty
+            masterSuppliers = ["Deep Seas", "Jasmin medical", "عدنان البركه"];
+            setDoc(doc(db, "matrix_config", "suppliers"), { list: masterSuppliers });
+        }
+        syncIndicator.innerText = "☁️ Firebase Synced";
+        renderManagementLists();
+        renderMatrix();
+    });
+
+    // 2. Sync Disposables Database Collection
+    onSnapshot(collection(db, "disposables"), (querySnapshot) => {
+        matrixDatabase = [];
+        querySnapshot.forEach((doc) => {
+            matrixDatabase.push({ id: doc.id, ...doc.data() });
+        });
+        // Sort alphabetically or keep consistent structure ordering
+        matrixDatabase.sort((a, b) => a.item.localeCompare(b.item));
+        renderMatrix();
+    });
+
+    // File Upload Cloud Insertion Handler
+    async function handleMasterFileUpload(e) {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = function(evt) {
+        reader.onload = async function(evt) {
             try {
                 const data = evt.target.result;
                 const workbook = XLSX.read(data, { type: 'binary' });
-                
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
                 const jsonRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
                 
                 if (jsonRows.length < 2) {
-                    alert("The uploaded matrix file structure does not contain sufficient rows.");
+                    alert("Insufficient rows in the selected spreadsheet file template.");
                     return;
                 }
 
@@ -331,13 +368,18 @@
                 }
 
                 if (parsedSuppliers.length === 0) {
-                    alert("Could not extract suppliers. Confirm headers contain 'Quantity per unit [Name]' and '[Name] Price'.");
+                    alert("Could not extract suppliers. Verify file headers mapping parameters.");
                     return;
                 }
 
-                masterSuppliers = parsedSuppliers;
-                matrixDatabase = [];
+                syncIndicator.innerText = "⏳ Uploading data to Cloud...";
+                
+                // Update cloud master list definitions document
+                await setDoc(doc(db, "matrix_config", "suppliers"), { list: parsedSuppliers });
 
+                // Push all rows to Firestore collection using secure multi-write batch configurations
+                const batch = writeBatch(db);
+                
                 for (let r = 1; r < jsonRows.length; r++) {
                     const row = jsonRows[r];
                     if (!row || row.length === 0) continue;
@@ -348,7 +390,7 @@
                     }
 
                     let pricesObj = {};
-                    masterSuppliers.forEach(sup => {
+                    parsedSuppliers.forEach(sup => {
                         const uomIdx = supplierColumns[sup]?.uom;
                         const priceIdx = supplierColumns[sup]?.price;
                         
@@ -361,30 +403,30 @@
                         pricesObj[sup] = { uom: uomVal, price: priceVal };
                     });
 
-                    matrixDatabase.push({ item: itemName, prices: pricesObj });
+                    // Generate safe alpha ID strings per line row description element
+                    const newDocRef = doc(collection(db, "disposables"));
+                    batch.set(newDocRef, { item: itemName, prices: pricesObj });
                 }
 
-                saveToLocalStorage();
-                renderManagementLists();
-                renderMatrix();
-                alert(`Successfully imported ${matrixDatabase.length} items for suppliers: ${masterSuppliers.join(', ')}`);
+                await batch.commit();
+                alert("Master spreadsheet uploaded successfully to Firebase.");
 
             } catch (err) {
                 console.error(err);
-                alert("An error occurred while handling the spreadsheet file contents mapping matrix.");
+                alert("Error encountered writing uploaded workbook data arrays onto remote database.");
             }
         };
         reader.readAsBinaryString(file);
     }
 
-    // Main Table Structural Grid Renderer
+    // Dynamic Render Matrix Table Grid Layout
     function renderMatrix() {
         const table = document.getElementById('matrix-table');
+        if(!table) return;
         table.innerHTML = "";
 
         const query = searchInput.value.toLowerCase().trim();
 
-        // Columns layout display with customized header tag text "UOM"
         let headerRow1 = `<tr><th rowspan="2" style="min-width: 240px; vertical-align: middle;">Item Description</th>`;
         let headerRow2 = `<tr>`;
 
@@ -398,13 +440,13 @@
         
         table.innerHTML += headerRow1 + headerRow2;
 
-        matrixDatabase.forEach((rowData, itemIdx) => {
+        matrixDatabase.forEach((rowData) => {
             if (query && !rowData.item.toLowerCase().includes(query)) return;
 
             let rowHtml = `<tr>
                 <td>
                     <input type="text" class="matrix-input" value="${rowData.item}" 
-                        onchange="updateItemName(${itemIdx}, this.value)" style="font-weight: 600;">
+                        data-id="${rowData.id}" data-field="item" style="font-weight: 600;">
                 </td>`;
             
             masterSuppliers.forEach(sup => {
@@ -414,41 +456,69 @@
                 rowHtml += `
                     <td>
                         <input type="text" class="matrix-input" value="${uomVal}" 
-                            onchange="updateCell(${itemIdx}, '${sup}', 'uom', this.value)">
+                            data-id="${rowData.id}" data-supplier="${sup}" data-field="uom">
                     </td>
                     <td>
                         <input type="text" class="matrix-input" value="${priceVal}" 
-                            onchange="updateCell(${itemIdx}, '${sup}', 'price', this.value)" style="font-weight:600; color:#27ae60;">
+                            data-id="${rowData.id}" data-supplier="${sup}" data-field="fieldPrice" style="font-weight:600; color:#27ae60;">
                     </td>
                 `;
             });
 
             rowHtml += `
                 <td style="text-align: center;">
-                    <button class="btn btn-danger btn-sm" onclick="removeItem(${itemIdx})">🗑️ Delete</button>
+                    <button class="btn btn-danger btn-sm btn-delete-row" data-id="${rowData.id}" data-name="${rowData.item}">🗑️ Delete</button>
                 </td>
             </tr>`;
             table.innerHTML += rowHtml;
         });
+
+        attachTableEventListeners();
     }
 
-    function updateCell(itemIdx, supplier, field, value) {
-        if (!matrixDatabase[itemIdx].prices[supplier]) {
-            matrixDatabase[itemIdx].prices[supplier] = { uom: "", price: "" };
-        }
-        matrixDatabase[itemIdx].prices[supplier][field] = value;
-        saveToLocalStorage();
+    // Dynamic Form and Inline Table Blur Triggers directly updating Firestore values
+    function attachTableEventListeners() {
+        document.querySelectorAll('.matrix-input').forEach(input => {
+            input.addEventListener('change', async (e) => {
+                const target = e.target;
+                const docId = target.getAttribute('data-id');
+                const fieldType = target.getAttribute('data-field');
+                const newValue = target.value.trim();
+
+                const docRef = doc(db, "disposables", docId);
+
+                if (fieldType === 'item') {
+                    if (newValue) await updateDoc(docRef, { item: newValue });
+                } else {
+                    const supplier = target.getAttribute('data-supplier');
+                    // Find document details from local state array cache to construct nested maps
+                    const originalRow = matrixDatabase.find(r => r.id === docId);
+                    if(originalRow) {
+                        let updatedPrices = { ...originalRow.prices };
+                        if (!updatedPrices[supplier]) updatedPrices[supplier] = { uom: "", price: "" };
+                        
+                        if (fieldType === 'uom') updatedPrices[supplier].uom = newValue;
+                        if (fieldType === 'fieldPrice') updatedPrices[supplier].price = newValue;
+
+                        await updateDoc(docRef, { prices: updatedPrices });
+                    }
+                }
+            });
+        });
+
+        document.querySelectorAll('.btn-delete-row').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const docId = btn.getAttribute('data-id');
+                const itemName = btn.getAttribute('data-name');
+                if (confirm(`Are you sure you want to delete "${itemName}"?`)) {
+                    await deleteDoc(doc(db, "disposables", docId));
+                }
+            });
+        });
     }
 
-    function updateItemName(itemIdx, value) {
-        if (value.trim()) {
-            matrixDatabase[itemIdx].item = value.trim();
-            saveToLocalStorage();
-        }
-    }
-
-    // Top Management Controls Functions
-    function addSupplier() {
+    // Top Management Cloud Functions
+    window.addSupplier = async function() {
         const input = document.getElementById('new-supplier-name');
         const name = input.value.trim();
         if (!name) return;
@@ -456,28 +526,21 @@
         
         masterSuppliers.push(name);
         input.value = "";
-        saveToLocalStorage();
-        renderManagementLists();
-        renderMatrix();
+        await setDoc(doc(db, "matrix_config", "suppliers"), { list: masterSuppliers });
     }
 
-    function removeSupplier(name) {
+    window.removeSupplier = async function(name) {
         if (!confirm(`Are you sure you want to completely remove "${name}"?`)) return;
-        masterSuppliers = masterSuppliers.filter(s => s !== name);
-        matrixDatabase.forEach(row => { if(row.prices[name]) delete row.prices[name]; });
-        saveToLocalStorage();
-        renderManagementLists();
-        renderMatrix();
+        const filteredSuppliers = masterSuppliers.filter(s => s !== name);
+        await setDoc(doc(db, "matrix_config", "suppliers"), { list: filteredSuppliers });
     }
 
-    // Save multi-linked data configuration across suppliers
-    function addItem() {
+    window.addItem = async function() {
         const nameInput = document.getElementById('new-item-name');
         const name = nameInput.value.trim();
         if (!name) return;
 
         let pricesObj = {};
-        
         masterSuppliers.forEach(sup => {
             const escapeSupKey = btoa(unescape(encodeURIComponent(sup))).replace(/=/g, "");
             const uomInp = document.getElementById(`mapping-uom-${escapeSupKey}`);
@@ -491,9 +554,9 @@
             }
         });
 
-        matrixDatabase.push({ item: name, prices: pricesObj });
+        // Add document instantly into Firestore collection database
+        await setDoc(doc(collection(db, "disposables")), { item: name, prices: pricesObj });
         
-        // Reset element inputs
         nameInput.value = "";
         masterSuppliers.forEach(sup => {
             const escapeSupKey = btoa(unescape(encodeURIComponent(sup))).replace(/=/g, "");
@@ -502,35 +565,29 @@
             if (uomInp) uomInp.value = "";
             if (priceInp) priceInp.value = "";
         });
-
-        saveToLocalStorage();
-        renderManagementLists();
-        renderMatrix();
-    }
-
-    function removeItem(idx) {
-        if (!confirm(`Are you sure you want to delete "${matrixDatabase[idx].item}"?`)) return;
-        matrixDatabase.splice(idx, 1);
-        saveToLocalStorage();
-        renderMatrix();
     }
 
     function renderManagementLists() {
         const supList = document.getElementById('supplier-list');
         const mappingArea = document.getElementById('supplier-inputs-mapping-area');
+        if(!supList || !mappingArea) return;
 
         supList.innerHTML = "";
         mappingArea.innerHTML = "";
 
         masterSuppliers.forEach(sup => {
-            // Suppliers pane renderer mapping
-            supList.innerHTML += `
-                <div class="list-item-btn">
-                    <span>🏢 <strong>${sup}</strong></span>
-                    <button onclick="removeSupplier('${sup}')">×</button>
-                </div>`;
+            // Suppliers block rows template rendering
+            const div = document.createElement('div');
+            div.className = "list-item-btn";
+            div.innerHTML = `<span>🏢 <strong>${sup}</strong></span>`;
             
-            // Dynamic form field input generator mapping row entries cleanly
+            const delBtn = document.createElement('button');
+            delBtn.innerText = "×";
+            delBtn.onclick = () => window.removeSupplier(sup);
+            div.appendChild(delBtn);
+            supList.appendChild(div);
+            
+            // Generate UOM and Price mappings rows securely
             const escapeSupKey = btoa(unescape(encodeURIComponent(sup))).replace(/=/g, "");
             mappingArea.innerHTML += `
                 <div class="supplier-mapping-row">
@@ -541,17 +598,7 @@
         });
     }
 
-    function saveToLocalStorage() {
-        localStorage.setItem('mat_suppliers', JSON.stringify(masterSuppliers));
-        localStorage.setItem('mat_database', JSON.stringify(matrixDatabase));
-    }
-
-    function loadLocalStorage() {
-        if (localStorage.getItem('mat_suppliers')) masterSuppliers = JSON.parse(localStorage.getItem('mat_suppliers'));
-        if (localStorage.getItem('mat_database')) matrixDatabase = JSON.parse(localStorage.getItem('mat_database'));
-    }
-
-    function exportToExcel() {
+    window.exportToExcel = function() {
         let sheetData = [];
         let r1 = ["Item Description"];
         let r2 = [""];
@@ -586,11 +633,6 @@
         XLSX.utils.book_append_sheet(wb, ws, "Comparison Matrix");
         XLSX.writeFile(wb, "Supplier_Comparison_Matrix_2026.xlsx");
     }
-
-    loadLocalStorage();
-    renderManagementLists();
-    renderMatrix();
 </script>
-
 </body>
 </html>
