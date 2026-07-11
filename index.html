@@ -257,7 +257,7 @@
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // 🔴 REPLACE THIS WITH YOUR OWN FIREBASE CONFIGURATION OBJECT FROM CONSOLE
-  const firebaseConfig = {
+    const firebaseConfig = {
   apiKey: "AIzaSyCfXnKMYsJnbBXqgp7Mq7s-ierLgI_ihs8",
   authDomain: "lab-disposables.firebaseapp.com",
   databaseURL: "https://lab-disposables-default-rtdb.firebaseio.com",
@@ -281,13 +281,11 @@
     document.getElementById('upload-master-file').addEventListener('change', handleMasterFileUpload);
     searchInput.addEventListener('input', renderMatrix);
 
-    // 🟢 Real-time Sync listeners for Firebase
     // 1. Sync Suppliers Document
     onSnapshot(doc(db, "matrix_config", "suppliers"), (docSnap) => {
         if (docSnap.exists()) {
             masterSuppliers = docSnap.data().list || [];
         } else {
-            // Seed defaults if database collection layout completely empty
             masterSuppliers = ["Deep Seas", "Jasmin medical", "عدنان البركه"];
             setDoc(doc(db, "matrix_config", "suppliers"), { list: masterSuppliers });
         }
@@ -302,12 +300,11 @@
         querySnapshot.forEach((doc) => {
             matrixDatabase.push({ id: doc.id, ...doc.data() });
         });
-        // Sort alphabetically or keep consistent structure ordering
         matrixDatabase.sort((a, b) => a.item.localeCompare(b.item));
         renderMatrix();
     });
 
-    // File Upload Cloud Insertion Handler
+    // Fixed File Upload Cloud Insertion Handler
     async function handleMasterFileUpload(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -330,12 +327,13 @@
                 let parsedSuppliers = [];
                 let supplierColumns = {};
 
+                // Map header configurations cleanly
                 for (let i = 1; i < headers.length; i++) {
                     let headerStr = String(headers[i]).trim();
                     if (!headerStr) continue;
 
-                    if (headerStr.toLowerCase().startsWith("quantity per unit")) {
-                        let supplierName = headerStr.replace(/quantity per unit/i, "").trim();
+                    if (headerStr.toLowerCase().startsWith("quantity per unit") || headerStr.toLowerCase().startsWith("uom")) {
+                        let supplierName = headerStr.replace(/quantity per unit/i, "").replace(/uom/i, "").trim();
                         if (supplierName) {
                             if (!parsedSuppliers.includes(supplierName)) parsedSuppliers.push(supplierName);
                             if (!supplierColumns[supplierName]) supplierColumns[supplierName] = {};
@@ -354,6 +352,7 @@
                     }
                 }
 
+                // Fallback column indexing support if headers are standard
                 if (parsedSuppliers.length === 0) {
                     for (let i = 2; i < headers.length; i++) {
                         let headerStr = String(headers[i]).trim();
@@ -369,16 +368,18 @@
 
                 if (parsedSuppliers.length === 0) {
                     alert("Could not extract suppliers. Verify file headers mapping parameters.");
+                    syncIndicator.innerText = "☁️ Firebase Synced";
                     return;
                 }
 
-                syncIndicator.innerText = "⏳ Uploading data to Cloud...";
+                syncIndicator.innerText = "⏳ Uploading data to Cloud... Please wait.";
                 
                 // Update cloud master list definitions document
                 await setDoc(doc(db, "matrix_config", "suppliers"), { list: parsedSuppliers });
 
-                // Push all rows to Firestore collection using secure multi-write batch configurations
-                const batch = writeBatch(db);
+                // Push rows to Firestore using chunked batch sizes (max 500 records per Firestore standard batch write limit)
+                let currentBatch = writeBatch(db);
+                let operationsCounter = 0;
                 
                 for (let r = 1; r < jsonRows.length; r++) {
                     const row = jsonRows[r];
@@ -403,16 +404,27 @@
                         pricesObj[sup] = { uom: uomVal, price: priceVal };
                     });
 
-                    // Generate safe alpha ID strings per line row description element
                     const newDocRef = doc(collection(db, "disposables"));
-                    batch.set(newDocRef, { item: itemName, prices: pricesObj });
+                    currentBatch.set(newDocRef, { item: itemName, prices: pricesObj });
+                    operationsCounter++;
+
+                    if (operationsCounter >= 400) {
+                        await currentBatch.commit();
+                        currentBatch = writeBatch(db);
+                        operationsCounter = 0;
+                    }
                 }
 
-                await batch.commit();
+                if (operationsCounter > 0) {
+                    await currentBatch.commit();
+                }
+
+                syncIndicator.innerText = "☁️ Firebase Synced";
                 alert("Master spreadsheet uploaded successfully to Firebase.");
 
             } catch (err) {
                 console.error(err);
+                syncIndicator.innerText = "☁️ Firebase Synced";
                 alert("Error encountered writing uploaded workbook data arrays onto remote database.");
             }
         };
@@ -450,8 +462,8 @@
                 </td>`;
             
             masterSuppliers.forEach(sup => {
-                let uomVal = rowData.prices[sup] ? rowData.prices[sup].uom : "";
-                let priceVal = rowData.prices[sup] ? rowData.prices[sup].price : "";
+                let uomVal = (rowData.prices && rowData.prices[sup]) ? rowData.prices[sup].uom : "";
+                let priceVal = (rowData.prices && rowData.prices[sup]) ? rowData.prices[sup].price : "";
 
                 rowHtml += `
                     <td>
@@ -476,7 +488,6 @@
         attachTableEventListeners();
     }
 
-    // Dynamic Form and Inline Table Blur Triggers directly updating Firestore values
     function attachTableEventListeners() {
         document.querySelectorAll('.matrix-input').forEach(input => {
             input.addEventListener('change', async (e) => {
@@ -491,10 +502,9 @@
                     if (newValue) await updateDoc(docRef, { item: newValue });
                 } else {
                     const supplier = target.getAttribute('data-supplier');
-                    // Find document details from local state array cache to construct nested maps
                     const originalRow = matrixDatabase.find(r => r.id === docId);
                     if(originalRow) {
-                        let updatedPrices = { ...originalRow.prices };
+                        let updatedPrices = originalRow.prices ? { ...originalRow.prices } : {};
                         if (!updatedPrices[supplier]) updatedPrices[supplier] = { uom: "", price: "" };
                         
                         if (fieldType === 'uom') updatedPrices[supplier].uom = newValue;
@@ -517,7 +527,6 @@
         });
     }
 
-    // Top Management Cloud Functions
     window.addSupplier = async function() {
         const input = document.getElementById('new-supplier-name');
         const name = input.value.trim();
@@ -554,7 +563,6 @@
             }
         });
 
-        // Add document instantly into Firestore collection database
         await setDoc(doc(collection(db, "disposables")), { item: name, prices: pricesObj });
         
         nameInput.value = "";
@@ -576,7 +584,6 @@
         mappingArea.innerHTML = "";
 
         masterSuppliers.forEach(sup => {
-            // Suppliers block rows template rendering
             const div = document.createElement('div');
             div.className = "list-item-btn";
             div.innerHTML = `<span>🏢 <strong>${sup}</strong></span>`;
@@ -587,7 +594,6 @@
             div.appendChild(delBtn);
             supList.appendChild(div);
             
-            // Generate UOM and Price mappings rows securely
             const escapeSupKey = btoa(unescape(encodeURIComponent(sup))).replace(/=/g, "");
             mappingArea.innerHTML += `
                 <div class="supplier-mapping-row">
@@ -614,7 +620,7 @@
         matrixDatabase.forEach(row => {
             let dataLine = [row.item];
             masterSuppliers.forEach(sup => {
-                let details = row.prices[sup];
+                let details = row.prices ? row.prices[sup] : null;
                 dataLine.push(details ? details.uom : "", details ? details.price : "");
             });
             sheetData.push(dataLine);
