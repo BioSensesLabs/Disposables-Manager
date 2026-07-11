@@ -2,31 +2,38 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Supplier Matrix - Cloud Edition</title>
+    <title>Master Supplier Matrix</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
-        :root { --primary: #2c3e50; --success: #18bc9c; --danger: #e74c3c; }
         body { font-family: sans-serif; padding: 20px; background: #f4f7f6; }
-        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        .btn { padding: 8px 12px; cursor: pointer; border: none; border-radius: 4px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        #matrix { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Cloud Supplier Comparison Matrix</h2>
+    <h2>Supplier Matrix (Cloud Sync)</h2>
     <input type="file" id="fileInput" accept=".csv, .xlsx">
-    <div id="status" style="margin: 10px 0; color: #7f8c8d;">Status: Ready</div>
-    <table id="matrix"></table>
+    <p id="status">Status: Waiting for file...</p>
+    <table id="matrix">
+        <thead><tr><th>Item</th><th>Prices Data</th></tr></thead>
+        <tbody id="matrix-body"></tbody>
+    </table>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, getDocs, doc, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, doc, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // 1. CONFIG: REPLACE WITH YOUR KEYS
+    // 1. YOUR CONFIGURATION (Must be copied from Firebase Console)
+    // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCfXnKMYsJnbBXqgp7Mq7s-ierLgI_ihs8",
   authDomain: "lab-disposables.firebaseapp.com",
@@ -37,45 +44,56 @@ const firebaseConfig = {
   appId: "1:845647001477:web:b8f40a2e0fe280c5dbf6ec"
 };
 
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // 2. REAL-TIME SYNC
+    // 2. REAL-TIME DATA RENDER
     onSnapshot(collection(db, "disposables"), (snap) => {
-        const table = document.getElementById('matrix');
-        table.innerHTML = "<tr><th>Item</th><th>Data</th></tr>";
+        const body = document.getElementById('matrix-body');
+        body.innerHTML = "";
         snap.forEach(doc => {
             const data = doc.data();
-            table.innerHTML += `<tr><td>${data.item}</td><td>${JSON.stringify(data.prices)}</td></tr>`;
+            body.innerHTML += `<tr><td>${data.item}</td><td>${JSON.stringify(data.prices)}</td></tr>`;
         });
     });
 
-    // 3. FILE UPLOAD LOGIC
-    document.getElementById('fileInput').addEventListener('change', async (e) => {
+    // 3. ROBUST FILE PARSER
+    document.getElementById('fileInput').addEventListener('change', (e) => {
         const file = e.target.files[0];
         const status = document.getElementById('status');
-        status.innerText = "⏳ Uploading...";
-        
         const reader = new FileReader();
+
         reader.onload = async (evt) => {
-            const data = XLSX.read(evt.target.result, { type: 'binary' });
-            const rows = XLSX.utils.sheet_to_json(data.Sheets[data.SheetNames[0]], { header: 1 });
-            
-            const batch = writeBatch(db);
-            // Assuming first row is headers, loop through data
-            for (let i = 1; i < rows.length; i++) {
-                if (!rows[i][0]) continue;
-                const ref = doc(collection(db, "disposables"));
-                batch.set(ref, { 
-                    item: rows[i][0], 
-                    prices: { raw: rows[i].slice(1) } 
-                });
+            try {
+                status.innerText = "⏳ Reading file...";
+                const data = XLSX.read(evt.target.result, { type: 'binary' });
+                const rows = XLSX.utils.sheet_to_json(data.Sheets[data.SheetNames[0]], { header: 1 });
+                
+                status.innerText = `⏳ Uploading ${rows.length} rows...`;
+                const batch = writeBatch(db);
+                
+                for (let i = 1; i < rows.length; i++) {
+                    if (!rows[i][0]) continue;
+                    // Create a unique reference for each item
+                    const ref = doc(collection(db, "disposables"));
+                    batch.set(ref, { 
+                        item: rows[i][0], 
+                        prices: rows[i].slice(1) 
+                    });
+                }
+                
+                await batch.commit();
+                status.innerText = "✅ Upload Complete! Database Synced.";
+            } catch (err) {
+                console.error(err);
+                status.innerText = "❌ Error: " + err.message;
             }
-            await batch.commit();
-            status.innerText = "✅ Upload Success!";
         };
         reader.readAsBinaryString(file);
     });
 </script>
 </body>
-</html>firebase
+</html>
