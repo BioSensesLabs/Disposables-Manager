@@ -2,39 +2,45 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Master Supplier Matrix</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Supplier Comparison Matrix</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f4f7f6; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
-        #matrix { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        :root { --primary-color: #2c3e50; --secondary-color: #18bc9c; --info-color: #3498db; --danger-color: #e74c3c; --light-bg: #f8f9fa; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: var(--light-bg); padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        header { background-color: var(--primary-color); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .btn { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: 600; color: white; }
+        .btn-primary { background-color: var(--secondary-color); }
+        .btn-danger { background-color: var(--danger-color); }
+        .btn-info { background-color: var(--info-color); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: #f1f2f6; }
+        input[type="text"] { width: 100%; padding: 5px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Supplier Matrix (Cloud Sync)</h2>
-    <input type="file" id="fileInput" accept=".csv, .xlsx">
-    <p id="status">Status: Waiting for file...</p>
-    <table id="matrix">
-        <thead><tr><th>Item</th><th>Prices Data</th></tr></thead>
-        <tbody id="matrix-body"></tbody>
-    </table>
+    <header>
+        <div><h1>Master Supplier Matrix</h1><span id="status">🔄 Initializing Firebase...</span></div>
+        <label class="btn btn-info">Upload CSV/XLSX<input type="file" id="fileInput" style="display:none"></label>
+    </header>
+
+    <div class="panel">
+        <table id="matrixTable"><thead><tr id="headerRow"></tr></thead><tbody id="bodyRow"></tbody></table>
+    </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, doc, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, onSnapshot, doc, writeBatch, updateDoc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // 1. YOUR CONFIGURATION (Must be copied from Firebase Console)
-    // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
+    // 🔴 INSERT YOUR CONFIG HERE
+   const firebaseConfig = {
   apiKey: "AIzaSyCfXnKMYsJnbBXqgp7Mq7s-ierLgI_ihs8",
   authDomain: "lab-disposables.firebaseapp.com",
   databaseURL: "https://lab-disposables-default-rtdb.firebaseio.com",
@@ -44,56 +50,74 @@ const firebaseConfig = {
   appId: "1:845647001477:web:b8f40a2e0fe280c5dbf6ec"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+    const db = getFirestore(initializeApp(firebaseConfig));
+    const status = document.getElementById('status');
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    let suppliers = [];
+    let dataCache = [];
 
-    // 2. REAL-TIME DATA RENDER
-    onSnapshot(collection(db, "disposables"), (snap) => {
-        const body = document.getElementById('matrix-body');
-        body.innerHTML = "";
-        snap.forEach(doc => {
-            const data = doc.data();
-            body.innerHTML += `<tr><td>${data.item}</td><td>${JSON.stringify(data.prices)}</td></tr>`;
-        });
+    // 1. Sync Logic
+    onSnapshot(doc(db, "matrix_config", "suppliers"), (snap) => {
+        suppliers = snap.exists() ? snap.data().list : ["Deep Seas", "Jasmin medical", "عدنان البركه"];
+        status.innerText = "☁️ Synced";
+        render();
     });
 
-    // 3. ROBUST FILE PARSER
-    document.getElementById('fileInput').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        const status = document.getElementById('status');
-        const reader = new FileReader();
+    onSnapshot(collection(db, "disposables"), (snap) => {
+        dataCache = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        render();
+    });
 
+    // 2. Optimized Upload
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        status.innerText = "⏳ Uploading...";
+        
+        const reader = new FileReader();
         reader.onload = async (evt) => {
-            try {
-                status.innerText = "⏳ Reading file...";
-                const data = XLSX.read(evt.target.result, { type: 'binary' });
-                const rows = XLSX.utils.sheet_to_json(data.Sheets[data.SheetNames[0]], { header: 1 });
-                
-                status.innerText = `⏳ Uploading ${rows.length} rows...`;
-                const batch = writeBatch(db);
-                
-                for (let i = 1; i < rows.length; i++) {
-                    if (!rows[i][0]) continue;
-                    // Create a unique reference for each item
-                    const ref = doc(collection(db, "disposables"));
-                    batch.set(ref, { 
-                        item: rows[i][0], 
-                        prices: rows[i].slice(1) 
-                    });
-                }
-                
-                await batch.commit();
-                status.innerText = "✅ Upload Complete! Database Synced.";
-            } catch (err) {
-                console.error(err);
-                status.innerText = "❌ Error: " + err.message;
-            }
+            const rows = XLSX.utils.sheet_to_json(XLSX.read(evt.target.result, { type: 'binary' }).Sheets[0], { header: 1 });
+            const batch = writeBatch(db);
+            
+            rows.slice(1).forEach(row => {
+                if (!row[0]) return;
+                batch.set(doc(collection(db, "disposables")), { 
+                    item: row[0], 
+                    prices: { "Default": { uom: row[1] || "", price: row[2] || "" } } 
+                });
+            });
+            
+            await batch.commit();
+            status.innerText = "✅ Done";
         };
         reader.readAsBinaryString(file);
     });
+
+    // 3. Render Engine
+    function render() {
+        const hRow = document.getElementById('headerRow');
+        const bRow = document.getElementById('bodyRow');
+        hRow.innerHTML = "<th>Item</th>" + suppliers.map(s => `<th>${s} UOM</th><th>${s} Price</th>`).join("");
+        
+        bRow.innerHTML = dataCache.map(d => `
+            <tr>
+                <td>${d.item}</td>
+                ${suppliers.map(s => `
+                    <td><input type="text" value="${d.prices[s]?.uom || ''}" data-id="${d.id}" data-sup="${s}" data-field="uom" class="cell"></td>
+                    <td><input type="text" value="${d.prices[s]?.price || ''}" data-id="${d.id}" data-sup="${s}" data-field="price" class="cell"></td>
+                `).join("")}
+            </tr>
+        `).join("");
+        
+        document.querySelectorAll('.cell').forEach(i => i.onchange = updateCell);
+    }
+
+    async function updateCell(e) {
+        const { id, sup, field } = e.target.dataset;
+        const row = dataCache.find(r => r.id === id);
+        row.prices[sup] = { ...row.prices[sup], [field]: e.target.value };
+        await updateDoc(doc(db, "disposables", id), { prices: row.prices });
+    }
 </script>
 </body>
 </html>
