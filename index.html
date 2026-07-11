@@ -286,7 +286,7 @@
         if (docSnap.exists()) {
             masterSuppliers = docSnap.data().list || [];
         } else {
-            masterSuppliers = ["Deep Seas", "Jasmin medical", "عدنان البركه"];
+            masterSuppliers = ["Deep Seas", "Jasmin medical", "Adnan Albarakeh"];
             setDoc(doc(db, "matrix_config", "suppliers"), { list: masterSuppliers });
         }
         syncIndicator.innerText = "☁️ Firebase Synced";
