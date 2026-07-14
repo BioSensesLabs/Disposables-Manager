@@ -27,7 +27,8 @@
         <h1>Master Supplier Comparison & Evaluation Grid</h1>
         <div>
             <span id="sync-status">🔄 Connecting...</span>
-            <button class="btn" style="background:var(--info-color)" onclick="document.getElementById('file-input').click()">Upload Master Data</button>
+            <button class="btn" style="background:var(--info-color)" onclick="document.getElementById('file-input').click()">Import Excel</button>
+            <button class="btn" style="background:var(--secondary-color)" onclick="exportToExcel()">Download Excel</button>
             <input type="file" id="file-input" hidden accept=".xlsx, .xls, .csv">
         </div>
     </header>
@@ -119,6 +120,21 @@
         row.querySelectorAll('.edit-mode').forEach(el => el.style.display = isEditing ? 'none' : 'block');
     };
 
+    window.exportToExcel = () => {
+        const exportData = matrixDatabase.map(row => {
+            let flatRow = { Item: row.item };
+            masterSuppliers.forEach(s => {
+                flatRow[`${s} UOM`] = row.prices?.[s]?.uom || '';
+                flatRow[`${s} Price`] = row.prices?.[s]?.price || '';
+            });
+            return flatRow;
+        });
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Master Data");
+        XLSX.writeFile(wb, "Master_Supplier_Data.xlsx");
+    };
+
     window.addSupplier = () => { const v = document.getElementById('new-supplier').value; if(v) set(ref(db, 'suppliers'), [...masterSuppliers, v]); };
     window.delSup = (s) => { if(confirm('Delete supplier?')) set(ref(db, 'suppliers'), masterSuppliers.filter(x => x !== s)); };
     window.addItem = () => {
@@ -133,18 +149,15 @@
         const reader = new FileReader();
         reader.onload = (evt) => {
             const wb = XLSX.read(evt.target.result, { type: 'binary' });
-            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { range: 1 });
             data.forEach(row => {
-                const itemName = row['Item Description'];
+                const itemName = row['Item Description'] || row['__EMPTY'];
                 if (!itemName) return;
-                push(ref(db, 'disposables'), { 
-                    item: itemName, 
-                    prices: {
-                        "Deep Seas": { uom: row['Quantity per unit Deep Seas'] || "", price: row['Deep Seas Price (JD)'] || "" },
-                        "Jasmin medical": { uom: row['Quantity per unit Jasmin medical'] || "", price: row['Jasmin medical Price (JD)'] || "" },
-                        "عدنان البركه": { uom: row['Quantity per unit Adnan Albarakeh'] || "", price: row['  Adnan Albarakeh Price List (JD)'] || "" }
-                    }
+                const prices = {};
+                masterSuppliers.forEach(s => {
+                    prices[s] = { uom: row[`UOM ${s}`] || "", price: row[`Price ${s}`] || "" };
                 });
+                push(ref(db, 'disposables'), { item: itemName, prices });
             });
             alert("Upload Complete!");
         };
