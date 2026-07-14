@@ -69,7 +69,6 @@
     const db = getDatabase(initializeApp(firebaseConfig));
     let masterSuppliers = [], matrixDatabase = [];
 
-    // Helper to sanitize Firebase keys
     const sanitizeKey = (key) => key.replace(/[.#$/[\]]/g, '').trim();
 
     onValue(ref(db, 'suppliers'), (s) => { masterSuppliers = s.val() || []; render(); document.getElementById('sync-status').innerText = "☁️ Firebase Synced"; });
@@ -164,13 +163,13 @@
         const reader = new FileReader();
         reader.onload = (evt) => {
             const wb = XLSX.read(evt.target.result, { type: 'binary' });
-            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { range: 1 });
+            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { range: 0 });
             data.forEach(row => {
-                const itemName = row['Item Description'] || row['__EMPTY'];
+                const itemName = row['Item'];
                 if (!itemName) return;
                 const prices = {};
                 masterSuppliers.forEach(s => {
-                    prices[sanitizeKey(s)] = { uom: row[`UOM ${s}`] || "", price: row[`Price ${s}`] || "" };
+                    prices[sanitizeKey(s)] = { uom: row[`${s} UOM`] || "", price: row[`${s} Price`] || "" };
                 });
                 push(ref(db, 'disposables'), { item: itemName, prices });
             });
