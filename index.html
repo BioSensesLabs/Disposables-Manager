@@ -16,6 +16,8 @@
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         .btn { padding: 8px 12px; cursor: pointer; border: none; border-radius: 4px; color: white; font-weight: bold; }
         .mapping-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; align-items: center; margin-bottom: 5px; font-size: 12px; }
+        .edit-mode { display: none; }
+        .view-mode { display: inline; }
     </style>
 </head>
 <body>
@@ -77,27 +79,55 @@
 
         const table = document.getElementById('matrix-table');
         table.innerHTML = `<tr><th>Item</th>${masterSuppliers.map(s => `<th>${s}</th>`).join('')}<th>Actions</th></tr>` +
-            matrixDatabase.map(row => `<tr><td>${row.item}</td>${masterSuppliers.map(s => 
-            `<td>UOM: <input style="width:50px" value="${row.prices?.[s]?.uom || ''}" onchange="updateCell('${row.id}', '${s}', 'uom', this.value)"> 
-             P: <input style="width:50px" value="${row.prices?.[s]?.price || ''}" onchange="updateCell('${row.id}', '${s}', 'price', this.value)"></td>`).join('')}
-             <td><button class="btn" style="background:var(--danger-color)" onclick="delItem('${row.id}')">Delete</button></td></tr>`).join('');
+            matrixDatabase.map(row => `
+                <tr id="row-${row.id}">
+                    <td>${row.item}</td>
+                    ${masterSuppliers.map(s => `
+                        <td>
+                            <span class="view-mode">UOM: ${row.prices?.[s]?.uom || '-'} | P: ${row.prices?.[s]?.price || '-'}</span>
+                            <div class="edit-mode">
+                                UOM: <input class="uom-in" style="width:50px" value="${row.prices?.[s]?.uom || ''}"> 
+                                P: <input class="price-in" style="width:50px" value="${row.prices?.[s]?.price || ''}">
+                            </div>
+                        </td>`).join('')}
+                    <td>
+                        <button class="btn edit-btn" style="background:var(--info-color)" onclick="toggleRow('${row.id}')">Edit</button>
+                        <button class="btn" style="background:var(--danger-color)" onclick="delItem('${row.id}')">Delete</button>
+                    </td>
+                </tr>`).join('');
     }
 
+    window.toggleRow = (id) => {
+        const row = document.getElementById(`row-${id}`);
+        const btn = row.querySelector('.edit-btn');
+        const isEditing = btn.innerText === "Save";
+
+        if (isEditing) {
+            const cells = row.querySelectorAll('td');
+            const updatedPrices = {};
+            masterSuppliers.forEach((s, index) => {
+                const uom = cells[index + 1].querySelector('.uom-in').value;
+                const price = cells[index + 1].querySelector('.price-in').value;
+                updatedPrices[s] = { uom, price };
+            });
+            update(ref(db, 'disposables/' + id), { prices: updatedPrices });
+            btn.innerText = "Edit";
+        } else {
+            btn.innerText = "Save";
+        }
+        row.querySelectorAll('.view-mode').forEach(el => el.style.display = isEditing ? 'inline' : 'none');
+        row.querySelectorAll('.edit-mode').forEach(el => el.style.display = isEditing ? 'none' : 'block');
+    };
+
     window.addSupplier = () => { const v = document.getElementById('new-supplier').value; if(v) set(ref(db, 'suppliers'), [...masterSuppliers, v]); };
-    window.delSup = (s) => set(ref(db, 'suppliers'), masterSuppliers.filter(x => x !== s));
+    window.delSup = (s) => { if(confirm('Delete supplier?')) set(ref(db, 'suppliers'), masterSuppliers.filter(x => x !== s)); };
     window.addItem = () => {
         const item = document.getElementById('new-item').value;
         const prices = {};
         masterSuppliers.forEach(s => prices[s] = { uom: document.getElementById(`uom-${s}`)?.value || "", price: document.getElementById(`price-${s}`)?.value || "" });
         if(item) push(ref(db, 'disposables'), { item, prices });
     };
-    window.delItem = (id) => remove(ref(db, 'disposables/' + id));
-    window.updateCell = (id, s, f, val) => {
-        const row = matrixDatabase.find(r => r.id === id);
-        if(!row.prices[s]) row.prices[s] = {};
-        row.prices[s][f] = val;
-        update(ref(db, 'disposables/' + id), { prices: row.prices });
-    };
+    window.delItem = (id) => { if(confirm('Delete item?')) remove(ref(db, 'disposables/' + id)); };
 
     document.getElementById('file-input').addEventListener('change', (e) => {
         const reader = new FileReader();
