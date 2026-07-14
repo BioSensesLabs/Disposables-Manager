@@ -11,128 +11,110 @@
         header { background: var(--primary-color); color: white; padding: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .panel { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
         table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 15px; border: 1px solid #e1e4e8; border-radius: 8px; overflow: hidden; }
-        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; padding: 12px; border-bottom: 2px solid #e1e4e8; }
+        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 11px; padding: 12px; border-bottom: 2px solid #e1e4e8; }
         td { padding: 10px; border-bottom: 1px solid #edf2f7; font-size: 13px; white-space: nowrap; }
-        tr:hover { background-color: #f1f5f9; }
-        .btn { padding: 6px 12px; cursor: pointer; border: none; border-radius: 6px; color: white; font-size: 12px; font-weight: 600; transition: 0.2s; }
-        .btn:hover { opacity: 0.8; }
+        .btn { padding: 6px 12px; cursor: pointer; border: none; border-radius: 6px; color: white; font-size: 12px; font-weight: 600; }
         .input-sm { padding: 4px; border: 1px solid #cbd5e0; border-radius: 4px; width: 60px; }
-        .actions { display: flex; gap: 5px; }
     </style>
 </head>
 <body>
-
 <div class="container">
     <header>
-        <h2 style="margin:0;">Supplier Comparison Matrix</h2>
+        <h2>Supplier Comparison Matrix</h2>
         <div>
             <button class="btn" style="background:var(--info-color)" onclick="document.getElementById('file-input').click()">Import</button>
             <button class="btn" style="background:var(--secondary-color)" onclick="exportToExcel()">Export</button>
             <button class="btn" style="background:var(--danger-color)" onclick="resetDatabase()">Reset</button>
-            <input type="file" id="file-input" hidden accept=".xlsx, .xls, .csv">
+            <input type="file" id="file-input" hidden accept=".xlsx, .csv">
         </div>
     </header>
-
+    <div class="panel">
+        <h3>Management</h3>
+        <input type="text" id="new-supplier" placeholder="Supplier name">
+        <button class="btn" style="background:var(--secondary-color)" onclick="addSupplier()">Add Supplier</button>
+        <hr>
+        <input type="text" id="new-item" placeholder="Item description">
+        <button class="btn" style="background:var(--secondary-color)" onclick="addItem()">Add Item</button>
+    </div>
     <div class="panel">
         <table id="matrix-table"></table>
     </div>
 </div>
-
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, set, push, remove, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    const firebaseConfig = {
+    const db = getDatabase(initializeApp({
         apiKey: "AIzaSyCfXnKMYsJnbBXqgp7Mq7s-ierLgI_ihs8",
-        authDomain: "lab-disposables.firebaseapp.com",
-        databaseURL: "https://lab-disposables-default-rtdb.firebaseio.com",
-        projectId: "lab-disposables",
-        storageBucket: "lab-disposables.firebasestorage.app",
-        messagingSenderId: "845647001477",
-        appId: "1:845647001477:web:b8f40a2e0fe280c5dbf6ec"
-    };
+        databaseURL: "https://lab-disposables-default-rtdb.firebaseio.com"
+    }));
 
-    const db = getDatabase(initializeApp(firebaseConfig));
-    let masterSuppliers = [], matrixDatabase = [];
-    const sanitizeKey = (key) => key.replace(/[.#$/[\]]/g, '').trim();
+    let suppliers = [], items = [];
+    const sanitize = (k) => k.replace(/[.#$/[\]]/g, '').trim();
 
-    onValue(ref(db, 'suppliers'), (s) => { masterSuppliers = s.val() || []; render(); });
+    onValue(ref(db, 'suppliers'), (s) => { suppliers = s.val() || []; render(); });
     onValue(ref(db, 'disposables'), (s) => { 
         const d = s.val() || {}; 
-        matrixDatabase = Object.keys(d).map(id => ({ id, ...d[id] })); 
+        items = Object.keys(d).map(id => ({ id, ...d[id] })); 
         render(); 
     });
 
     function render() {
         const table = document.getElementById('matrix-table');
-        let html = `<tr><th>Item</th>` + masterSuppliers.map(s => `<th>${s} (UOM / Price)</th>`).join('') + `<th>Actions</th></tr>`;
-        
-        matrixDatabase.forEach(row => {
+        let html = `<tr><th>Item</th>` + suppliers.map(s => `<th>${s} (UOM / Price)</th>`).join('') + `<th>Actions</th></tr>`;
+        items.forEach(row => {
             html += `<tr id="row-${row.id}">
                 <td>${row.item}</td>` + 
-                masterSuppliers.map(s => `
-                    <td>
-                        <span class="view-mode">${row.prices?.[sanitizeKey(s)]?.uom || '-'} / ${row.prices?.[sanitizeKey(s)]?.price || '-'}</span>
-                        <span class="edit-mode" style="display:none;">
-                            <input class="uom-in input-sm" data-s="${sanitizeKey(s)}" value="${row.prices?.[sanitizeKey(s)]?.uom || ''}">
-                            <input class="price-in input-sm" data-s="${sanitizeKey(s)}" value="${row.prices?.[sanitizeKey(s)]?.price || ''}">
-                        </span>
-                    </td>`).join('') + 
-                `<td class="actions">
-                    <button class="btn edit-btn" style="background:var(--info-color)" onclick="toggleRow('${row.id}')">Edit</button>
-                    <button class="btn" style="background:var(--danger-color)" onclick="delItem('${row.id}')">Delete</button>
-                </td></tr>`;
+                suppliers.map(s => `<td>
+                    <span class="view">${row.prices?.[sanitize(s)]?.uom || '-'} / ${row.prices?.[sanitize(s)]?.price || '-'}</span>
+                    <span class="edit" style="display:none;">
+                        <input class="uom-in input-sm" data-s="${sanitize(s)}" value="${row.prices?.[sanitize(s)]?.uom || ''}">
+                        <input class="price-in input-sm" data-s="${sanitize(s)}" value="${row.prices?.[sanitize(s)]?.price || ''}">
+                    </span>
+                </td>`).join('') + 
+                `<td class="actions"><button class="btn" style="background:var(--info-color)" onclick="toggle(this, '${row.id}')">Edit</button>
+                 <button class="btn" style="background:var(--danger-color)" onclick="delItem('${row.id}')">Del</button></td></tr>`;
         });
         table.innerHTML = html;
     }
 
-    window.toggleRow = (id) => {
+    window.toggle = (btn, id) => {
         const row = document.getElementById(`row-${id}`);
-        const btn = row.querySelector('.edit-btn');
-        const isEditing = btn.innerText === "Save";
-
-        if (isEditing) {
-            const updatedPrices = {};
-            row.querySelectorAll('.edit-mode input[class*="-in"]').forEach(input => {
-                const s = input.dataset.s;
-                if (!updatedPrices[s]) updatedPrices[s] = {};
-                if (input.classList.contains('uom-in')) updatedPrices[s].uom = input.value;
-                if (input.classList.contains('price-in')) updatedPrices[s].price = input.value;
-            });
-            update(ref(db, 'disposables/' + id), { prices: updatedPrices });
-            btn.innerText = "Edit";
-        } else {
+        if (btn.innerText === "Edit") {
+            row.querySelectorAll('.view, .edit').forEach(el => el.style.display = (el.style.display === 'none' ? 'inline' : 'none'));
             btn.innerText = "Save";
-        }
-        row.querySelectorAll('.view-mode, .edit-mode').forEach(el => el.style.display = (el.style.display === 'none') ? 'inline' : 'none');
-    };
-
-    window.exportToExcel = () => {
-        const exportData = matrixDatabase.map(r => {
-            let obj = { Item: r.item };
-            masterSuppliers.forEach(s => {
-                obj[`${s} UOM`] = r.prices?.[sanitizeKey(s)]?.uom || '';
-                obj[`${s} Price`] = r.prices?.[sanitizeKey(s)]?.price || '';
+        } else {
+            const updated = {};
+            row.querySelectorAll('.edit input[class*="-in"]').forEach(input => {
+                const s = input.dataset.s;
+                if (!updated[s]) updated[s] = {};
+                if (input.classList.contains('uom-in')) updated[s].uom = input.value;
+                else updated[s].price = input.value;
             });
-            return obj;
-        });
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Data");
-        XLSX.writeFile(wb, "Inventory_Matrix.xlsx");
+            update(ref(db, 'disposables/' + id), { prices: updated });
+            btn.innerText = "Edit";
+        }
     };
 
-    window.resetDatabase = () => { if(confirm('Reset all data?')) set(ref(db), null); };
-    window.delItem = (id) => { if(confirm('Delete item?')) remove(ref(db, 'disposables/' + id)); };
+    window.addSupplier = () => { const v = document.getElementById('new-supplier').value; if(v) set(ref(db, 'suppliers'), [...suppliers, sanitize(v)]); };
+    window.addItem = () => { const item = document.getElementById('new-item').value; if(item) push(ref(db, 'disposables'), { item, prices: {} }); };
+    window.delItem = (id) => { if(confirm('Delete?')) remove(ref(db, 'disposables/' + id)); };
+    window.resetDatabase = () => { if(confirm('Reset all?')) set(ref(db), null); };
+    window.exportToExcel = () => {
+        const ws = XLSX.utils.json_to_sheet(items.map(r => {
+            let o = { Item: r.item };
+            suppliers.forEach(s => { o[s+' UOM'] = r.prices?.[sanitize(s)]?.uom || ''; o[s+' Price'] = r.prices?.[sanitize(s)]?.price || ''; });
+            return o;
+        }));
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Data"); XLSX.writeFile(wb, "Inventory.xlsx");
+    };
 
     document.getElementById('file-input').addEventListener('change', (e) => {
         const reader = new FileReader();
         reader.onload = (evt) => {
-            const data = XLSX.utils.sheet_to_json(XLSX.read(evt.target.result, { type: 'binary' }).Sheets[0], { range: 0 });
-            data.forEach(row => {
-                if (!row['Item']) return;
+            XLSX.utils.sheet_to_json(XLSX.read(evt.target.result, { type: 'binary' }).Sheets[0], { range: 0 }).forEach(row => {
                 const prices = {};
-                masterSuppliers.forEach(s => prices[sanitizeKey(s)] = { uom: row[`${s} UOM`] || "", price: row[`${s} Price`] || "" });
+                suppliers.forEach(s => prices[sanitize(s)] = { uom: row[s+' UOM'] || "", price: row[s+' Price'] || "" });
                 push(ref(db, 'disposables'), { item: row['Item'], prices });
             });
         };
