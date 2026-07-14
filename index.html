@@ -84,10 +84,10 @@
                     <td>${row.item}</td>
                     ${masterSuppliers.map(s => `
                         <td>
-                            <span class="view-mode">UOM: ${row.prices?.[s]?.uom || '-'} | P: ${row.prices?.[s]?.price || '-'}</span>
+                            <span class="view-mode">UOM: ${row.prices?.[s]?.uom || '-'} | Price: ${row.prices?.[s]?.price || '-'}</span>
                             <div class="edit-mode">
                                 UOM: <input class="uom-in" style="width:50px" value="${row.prices?.[s]?.uom || ''}"> 
-                                P: <input class="price-in" style="width:50px" value="${row.prices?.[s]?.price || ''}">
+                                Price: <input class="price-in" style="width:50px" value="${row.prices?.[s]?.price || ''}">
                             </div>
                         </td>`).join('')}
                     <td>
