@@ -132,11 +132,11 @@
                 </div>
                 <div>
                     <label style="font-size:12px; font-weight:600;">Current Quantity</label>
-                    <input type="text" id="kit-current-qty" class="form-control" placeholder="Current Quantity">
+                    <input type="number" id="kit-current-qty" class="form-control" placeholder="Current Quantity">
                 </div>
                 <div>
                     <label style="font-size:12px; font-weight:600;">Minimum Quantity</label>
-                    <input type="text" id="kit-min-qty" class="form-control" placeholder="Minimum Quantity">
+                    <input type="number" id="kit-min-qty" class="form-control" placeholder="Minimum Quantity">
                 </div>
             </div>
             <div class="form-row">
@@ -202,9 +202,8 @@
             <input type="hidden" id="edit-order-id">
             <div class="form-row">
                 <div>
-                    <label style="font-size:12px; font-weight:600;">Kit Name</label>
-                    <select id="order-kit-select" class="form-control">
-                        <option value="">Select Kit...</option>
+                    <label style="font-size:12px; font-weight:600;">Kit Names (Hold Ctrl/Cmd to multi-select)</label>
+                    <select id="order-kit-select" class="form-control" multiple style="height: 100px;">
                     </select>
                 </div>
                 <div>
@@ -245,7 +244,7 @@
             <table id="inventory-orders-table">
                 <thead>
                     <tr>
-                        <th>Kit Name</th>
+                        <th>Kit Name(s)</th>
                         <th>Order Date</th>
                         <th>Supplier</th>
                         <th>Order By</th>
@@ -381,8 +380,8 @@
     window.saveKit = () => {
         const id = document.getElementById('edit-kit-id').value;
         const kitName = document.getElementById('kit-name').value;
-        const currentQty = document.getElementById('kit-current-qty').value;
-        const minQty = document.getElementById('kit-min-qty').value;
+        const currentQty = Number(document.getElementById('kit-current-qty').value);
+        const minQty = Number(document.getElementById('kit-min-qty').value);
         const uom = document.getElementById('kit-uom').value;
         const autoRequest = document.getElementById('kit-auto-request').checked;
         const supplier = document.getElementById('kit-supplier-select').value;
@@ -399,20 +398,27 @@
 
     function renderKitsInventory() {
         const tbody = document.getElementById('kits-inventory-tbody');
-        tbody.innerHTML = kitsInventory.map(k => `
-            <tr>
-                <td>${k.kitName || ''}</td>
-                <td>${k.currentQty || ''}</td>
-                <td>${k.minQty || ''}</td>
-                <td>${k.uom || ''}</td>
-                <td>${k.autoRequest ? 'Yes' : 'No'}</td>
-                <td>${k.supplier || ''}</td>
-                <td>
-                    <button class="icon-btn" onclick="editKit('${k.id}')" title="Edit">✏️</button>
-                    <button class="icon-btn" onclick="delKit('${k.id}')" title="Delete">🗑️</button>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = kitsInventory.map(k => {
+            const current = Number(k.currentQty || 0);
+            const minimum = Number(k.minQty || 0);
+            const isLow = current < minimum;
+            const qtyStyle = isLow ? 'background-color: #e74c3c; color: white; font-weight: bold; padding: 4px 8px; border-radius: 4px; display: inline-block;' : '';
+
+            return `
+                <tr>
+                    <td>${k.kitName || ''}</td>
+                    <td><span style="${qtyStyle}">${k.currentQty || 0}</span></td>
+                    <td>${k.minQty || 0}</td>
+                    <td>${k.uom || ''}</td>
+                    <td>${k.autoRequest ? 'Yes' : 'No'}</td>
+                    <td>${k.supplier || ''}</td>
+                    <td>
+                        <button class="icon-btn" onclick="editKit('${k.id}')" title="Edit">✏️</button>
+                        <button class="icon-btn" onclick="delKit('${k.id}')" title="Delete">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
     }
 
     window.editKit = (id) => {
@@ -456,11 +462,10 @@
                 const kitName = row['Test name'];
                 if (!kitName) return;
                 
-                const currentQty = row['Current Quantity'] || '';
-                const minQty = row['Minimum Quantity'] || '';
+                const currentQty = row['Current Quantity'] || 0;
+                const minQty = row['Minimum Quantity'] || 0;
                 const uom = row['UOM'] || '';
                 
-                // Handle Auto Request checkbox text conversion if supplied as boolean or string
                 let rawAuto = row['Auto Request'];
                 let autoRequest = (rawAuto === true || String(rawAuto).toLowerCase() === 'true' || String(rawAuto).toLowerCase() === 'yes');
                 
@@ -477,14 +482,15 @@
     // --- Tab 4: Inventory Orders Logic ---
     window.saveOrder = () => {
         const id = document.getElementById('edit-order-id').value;
-        const kitName = document.getElementById('order-kit-select').value;
+        const kitSelectElement = document.getElementById('order-kit-select');
+        const selectedKitNames = Array.from(kitSelectElement.selectedOptions).map(option => option.value);
         const orderDate = document.getElementById('order-date').value;
         const supplier = document.getElementById('order-supplier-select').value;
         const orderBy = document.getElementById('order-by-select').value;
         const expectedArrival = document.getElementById('order-arrival-date').value;
 
-        if(!kitName) return alert('Kit name is required.');
-        const data = { kitName, orderDate, supplier, orderBy, expectedArrival };
+        if(selectedKitNames.length === 0) return alert('Please select at least one kit.');
+        const data = { kitName: selectedKitNames.join(', '), orderDate, supplier, orderBy, expectedArrival };
 
         if(id) {
             update(ref(db, 'inventoryOrders/' + id), data).then(() => resetOrderForm());
@@ -514,7 +520,14 @@
         const order = inventoryOrders.find(x => x.id === id);
         if(!order) return;
         document.getElementById('edit-order-id').value = order.id;
-        document.getElementById('order-kit-select').value = order.kitName;
+        
+        // Handle multiselect selection setup
+        const kitSelectElement = document.getElementById('order-kit-select');
+        const orderKits = (order.kitName || '').split(', ').map(k => k.trim());
+        Array.from(kitSelectElement.options).forEach(opt => {
+            opt.selected = orderKits.includes(opt.value);
+        });
+
         document.getElementById('order-date').value = order.orderDate;
         document.getElementById('order-supplier-select').value = order.supplier;
         document.getElementById('order-by-select').value = order.orderBy;
@@ -525,7 +538,8 @@
 
     window.resetOrderForm = () => {
         document.getElementById('edit-order-id').value = '';
-        document.getElementById('order-kit-select').value = '';
+        const kitSelectElement = document.getElementById('order-kit-select');
+        Array.from(kitSelectElement.options).forEach(opt => opt.selected = false);
         document.getElementById('order-date').value = '';
         document.getElementById('order-supplier-select').value = '';
         document.getElementById('order-by-select').value = '';
@@ -540,10 +554,9 @@
 
     // Helper to dynamically populate dropdowns from existing data sources
     function populateDropdowns() {
-        // Populate Kits Dropdown for Orders
+        // Populate Kits Dropdown for Orders (Multi-select)
         const kitSelect = document.getElementById('order-kit-select');
-        kitSelect.innerHTML = '<option value="">Select Kit...</option>' + 
-            kitsInventory.map(k => `<option value="${k.kitName}">${k.kitName}</option>`).join('');
+        kitSelect.innerHTML = kitsInventory.map(k => `<option value="${k.kitName}">${k.kitName}</option>`).join('');
 
         // Populate Suppliers Dropdown for Kits Inventory & Orders (Concatenation of Supplier Name and POC Name)
         const supplierOptionsHTML = '<option value="">Select Supplier & POC...</option>' + 
