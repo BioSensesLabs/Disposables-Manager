@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Master Supplier Comparison & Evaluation Grid</title>
+    <title>Master Supplier Comparison & Inventory Management</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --primary-color: #2c3e50; --secondary-color: #18bc9c; --danger-color: #e74c3c; --info-color: #3498db; --light-bg: #f4f7f6; }
@@ -10,12 +10,12 @@
         .container { max-width: 1400px; margin: auto; }
         header { background: var(--primary-color); color: white; padding: 20px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .management-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-        .panel { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        .form-control { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        .panel { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .form-control { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
         
         table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 15px; border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
-        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 11px; padding: 12px; border-bottom: 2px solid #eee; }
-        td { padding: 10px; border-bottom: 1px solid #f9f9f9; font-size: 13px; white-space: nowrap; }
+        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 11px; padding: 12px; border-bottom: 2px solid #eee; text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #f9f9f9; font-size: 13px; }
         tr:hover { background-color: #fcfcfc; }
         
         .btn { padding: 6px 12px; cursor: pointer; border: none; border-radius: 5px; color: white; font-weight: 600; font-size: 12px; transition: 0.2s; }
@@ -24,38 +24,235 @@
         .edit-mode { display: none; }
         .input-inline { width: 55px; padding: 3px; border: 1px solid #ccc; border-radius: 3px; }
         .icon-btn { background: none; border: none; cursor: pointer; font-size: 16px; margin: 0 4px; padding: 0; }
+
+        /* Navigation Tabs Styles */
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .tab-btn { background: #e0e0e0; border: none; padding: 10px 20px; font-weight: 600; cursor: pointer; border-radius: 5px 5px 0 0; color: #555; }
+        .tab-btn.active { background: var(--primary-color); color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <header>
-        <h2 style="margin:0;">Master Supplier Comparison</h2>
+        <h2 style="margin:0;">Lab Inventory & Supplier Management</h2>
         <div>
             <span id="sync-status" style="font-size: 12px; margin-right: 15px; opacity: 0.7;">🔄 Connecting...</span>
+        </div>
+    </header>
+
+    <!-- Main Navigation Tabs -->
+    <div class="nav-tabs">
+        <button class="tab-btn active" onclick="switchTab('comparisonTab', this)">Master Supplier Comparison</button>
+        <button class="tab-btn" onclick="switchTab('suppliersTab', this)">Suppliers Directory</button>
+        <button class="tab-btn" onclick="switchTab('kitsTab', this)">Kits Inventory</button>
+        <button class="tab-btn" onclick="switchTab('ordersTab', this)">Inventory Orders</button>
+    </div>
+
+    <!-- TAB 1: MASTER SUPPLIER COMPARISON -->
+    <div id="comparisonTab" class="tab-content active">
+        <div style="margin-bottom: 15px; text-align: right;">
             <button class="btn" style="background:var(--info-color)" onclick="document.getElementById('file-input').click()">Import Excel</button>
             <button class="btn" style="background:var(--secondary-color)" onclick="exportToExcel()">Download</button>
             <button class="btn" style="background:var(--danger-color)" onclick="resetDatabase()">Reset DB</button>
             <input type="file" id="file-input" hidden accept=".xlsx, .xls, .csv">
         </div>
-    </header>
 
-    <div class="management-row">
+        <div class="management-row">
+            <div class="panel">
+                <h3>Suppliers</h3>
+                <input type="text" id="new-supplier" class="form-control" placeholder="New supplier name...">
+                <button class="btn" style="background:var(--secondary-color)" onclick="addSupplier()">Add Supplier</button>
+                <div id="supplier-list" style="margin-top:15px;"></div>
+            </div>
+            <div class="panel">
+                <h3>Line Items</h3>
+                <input type="text" id="new-item" class="form-control" placeholder="Item description...">
+                <div id="mapping-fields"></div>
+                <button class="btn" style="background:var(--secondary-color); width:100%; margin-top:10px;" onclick="addItem()">Add Line Item</button>
+            </div>
+        </div>
+        <div class="panel"><table id="matrix-table"></table></div>
+    </div>
+
+    <!-- TAB 2: SUPPLIERS DIRECTORY -->
+    <div id="suppliersTab" class="tab-content">
         <div class="panel">
-            <h3>Suppliers</h3>
-            <input type="text" id="new-supplier" class="form-control" placeholder="New supplier name...">
-            <button class="btn" style="background:var(--secondary-color)" onclick="addSupplier()">Add Supplier</button>
-            <div id="supplier-list" style="margin-top:15px;"></div>
+            <h3 id="sup-form-title">Add New Supplier</h3>
+            <input type="hidden" id="edit-sup-id">
+            <div class="form-row">
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Supplier Name</label>
+                    <input type="text" id="dir-supplier-name" class="form-control" placeholder="Supplier Name">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Supplier POC Name</label>
+                    <input type="text" id="dir-poc-name" class="form-control" placeholder="POC Name">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Supplier POC Mobile Number</label>
+                    <input type="text" id="dir-poc-mobile" class="form-control" placeholder="Mobile Number">
+                </div>
+            </div>
+            <button class="btn" style="background:var(--secondary-color)" onclick="saveDirectorySupplier()">Save Supplier</button>
+            <button class="btn" style="background:#95a5a6; display:none;" id="cancel-sup-edit" onclick="resetSupplierDirForm()">Cancel</button>
         </div>
         <div class="panel">
-            <h3>Line Items</h3>
-            <input type="text" id="new-item" class="form-control" placeholder="Item description...">
-            <div id="mapping-fields"></div>
-            <button class="btn" style="background:var(--secondary-color); width:100%; margin-top:10px;" onclick="addItem()">Add Line Item</button>
+            <h3>Suppliers Directory List</h3>
+            <table id="directory-suppliers-table">
+                <thead>
+                    <tr>
+                        <th>Supplier Name</th>
+                        <th>Supplier POC Name</th>
+                        <th>Supplier POC Mobile Number</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="directory-suppliers-tbody"></tbody>
+            </table>
         </div>
     </div>
 
-    <div class="panel"><table id="matrix-table"></table></div>
+    <!-- TAB 3: KITS INVENTORY -->
+    <div id="kitsTab" class="tab-content">
+        <div class="panel">
+            <h3 id="kit-form-title">Add New Kit</h3>
+            <input type="hidden" id="edit-kit-id">
+            <div class="form-row">
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Kit Name</label>
+                    <input type="text" id="kit-name" class="form-control" placeholder="Kit Name">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Current Quantity</label>
+                    <input type="text" id="kit-current-qty" class="form-control" placeholder="Current Quantity">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Minimum Quantity</label>
+                    <input type="text" id="kit-min-qty" class="form-control" placeholder="Minimum Quantity">
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <label style="font-size:12px; font-weight:600;">UOM</label>
+                    <select id="kit-uom" class="form-control">
+                        <option value="">Select UOM...</option>
+                        <option value="Cartilage">Cartilage</option>
+                        <option value="Bottle %">Bottle %</option>
+                        <option value="WELL">WELL</option>
+                        <option value="STRIP">STRIP</option>
+                        <option value="Slide">Slide</option>
+                        <option value="Bottle 15 ML">Bottle 15 ML</option>
+                        <option value="Bottle 30 ML">Bottle 30 ML</option>
+                        <option value="Bottle 40 ML">Bottle 40 ML</option>
+                        <option value="Bottle 60 ML">Bottle 60 ML</option>
+                        <option value="Bottel 80 ML">Bottel 80 ML</option>
+                        <option value="Bottel 100 ML">Bottel 100 ML</option>
+                        <option value="Bottel 8 ML">Bottel 8 ML</option>
+                        <option value="Box">Box</option>
+                        <option value="Bottel 25 ML">Bottel 25 ML</option>
+                        <option value="Tube">Tube</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Supplier</label>
+                    <select id="kit-supplier-select" class="form-control">
+                        <option value="">Select Supplier...</option>
+                    </select>
+                </div>
+                <div style="display: flex; align-items: center; padding-top: 15px;">
+                    <label style="font-size:12px; font-weight:600; cursor:pointer;">
+                        <input type="checkbox" id="kit-auto-request"> Auto Request
+                    </label>
+                </div>
+            </div>
+            <button class="btn" style="background:var(--secondary-color)" onclick="saveKit()">Save Kit</button>
+            <button class="btn" style="background:#95a5a6; display:none;" id="cancel-kit-edit" onclick="resetKitForm()">Cancel</button>
+        </div>
+        <div class="panel">
+            <h3>Kits Inventory List</h3>
+            <table id="kits-inventory-table">
+                <thead>
+                    <tr>
+                        <th>Kit Name</th>
+                        <th>Current Quantity</th>
+                        <th>Minimum Quantity</th>
+                        <th>UOM</th>
+                        <th>Auto Request</th>
+                        <th>Supplier</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="kits-inventory-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB 4: INVENTORY ORDERS -->
+    <div id="ordersTab" class="tab-content">
+        <div class="panel">
+            <h3 id="order-form-title">Submit New Order</h3>
+            <input type="hidden" id="edit-order-id">
+            <div class="form-row">
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Kit Name</label>
+                    <select id="order-kit-select" class="form-control">
+                        <option value="">Select Kit...</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Order Date</label>
+                    <input type="date" id="order-date" class="form-control">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Supplier</label>
+                    <select id="order-supplier-select" class="form-control">
+                        <option value="">Select Supplier & POC...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Order By</label>
+                    <select id="order-by-select" class="form-control">
+                        <option value="">Select Person...</option>
+                        <option value="Ammar">Ammar</option>
+                        <option value="Rami">Rami</option>
+                        <option value="Elham">Elham</option>
+                        <option value="Dima">Dima</option>
+                        <option value="Dania">Dania</option>
+                        <option value="Amar">Amar</option>
+                        <option value="Rashad">Rashad</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Expected Arrival Date</label>
+                    <input type="date" id="order-arrival-date" class="form-control">
+                </div>
+            </div>
+            <button class="btn" style="background:var(--secondary-color)" onclick="saveOrder()">Submit Order</button>
+            <button class="btn" style="background:#95a5a6; display:none;" id="cancel-order-edit" onclick="resetOrderForm()">Cancel</button>
+        </div>
+        <div class="panel">
+            <h3>Inventory Orders List</h3>
+            <table id="inventory-orders-table">
+                <thead>
+                    <tr>
+                        <th>Kit Name</th>
+                        <th>Order Date</th>
+                        <th>Supplier</th>
+                        <th>Order By</th>
+                        <th>Expected Arrival Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inventory-orders-tbody"></tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <script type="module">
@@ -74,10 +271,24 @@
 
     const db = getDatabase(initializeApp(firebaseConfig));
     let masterSuppliers = [], matrixDatabase = [];
+    let directorySuppliers = [], kitsInventory = [], inventoryOrders = [];
+    
     const sanitizeKey = (key) => key.replace(/[.#$/[\]]/g, '').trim();
 
+    // Firebase Listeners
     onValue(ref(db, 'suppliers'), (s) => { masterSuppliers = s.val() || []; render(); document.getElementById('sync-status').innerText = "☁️ Firebase Synced"; });
     onValue(ref(db, 'disposables'), (s) => { const d = s.val() || {}; matrixDatabase = Object.keys(d).map(id => ({ id, ...d[id] })); render(); });
+    onValue(ref(db, 'directorySuppliers'), (s) => { const d = s.val() || {}; directorySuppliers = Object.keys(d).map(id => ({ id, ...d[id] })); renderDirectorySuppliers(); populateDropdowns(); });
+    onValue(ref(db, 'kitsInventory'), (s) => { const d = s.val() || {}; kitsInventory = Object.keys(d).map(id => ({ id, ...d[id] })); renderKitsInventory(); populateDropdowns(); });
+    onValue(ref(db, 'inventoryOrders'), (s) => { const d = s.val() || {}; inventoryOrders = Object.keys(d).map(id => ({ id, ...d[id] })); renderInventoryOrders(); });
+
+    // Tab Switching Function
+    window.switchTab = (tabId, btn) => {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        btn.classList.add('active');
+    };
 
     function render() {
         document.getElementById('supplier-list').innerHTML = masterSuppliers.map(s => 
@@ -106,6 +317,216 @@
                 </tr>`).join('');
     }
 
+    // --- Tab 2: Suppliers Directory Logic ---
+    window.saveDirectorySupplier = () => {
+        const id = document.getElementById('edit-sup-id').value;
+        const name = document.getElementById('dir-supplier-name').value;
+        const pocName = document.getElementById('dir-poc-name').value;
+        const mobile = document.getElementById('dir-poc-mobile').value;
+
+        if(!name) return alert('Supplier name is required.');
+        const data = { name, pocName, mobile };
+
+        if(id) {
+            update(ref(db, 'directorySuppliers/' + id), data).then(() => resetSupplierDirForm());
+        } else {
+            push(ref(db, 'directorySuppliers'), data).then(() => resetSupplierDirForm());
+        }
+    };
+
+    function renderDirectorySuppliers() {
+        const tbody = document.getElementById('directory-suppliers-tbody');
+        tbody.innerHTML = directorySuppliers.map(s => `
+            <tr>
+                <td>${s.name || ''}</td>
+                <td>${s.pocName || ''}</td>
+                <td>${s.mobile || ''}</td>
+                <td>
+                    <button class="icon-btn" onclick="editDirectorySupplier('${s.id}')" title="Edit">✏️</button>
+                    <button class="icon-btn" onclick="delDirectorySupplier('${s.id}')" title="Delete">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    window.editDirectorySupplier = (id) => {
+        const sup = directorySuppliers.find(x => x.id === id);
+        if(!sup) return;
+        document.getElementById('edit-sup-id').value = sup.id;
+        document.getElementById('dir-supplier-name').value = sup.name;
+        document.getElementById('dir-poc-name').value = sup.pocName;
+        document.getElementById('dir-poc-mobile').value = sup.mobile;
+        document.getElementById('sup-form-title').innerText = 'Edit Supplier';
+        document.getElementById('cancel-sup-edit').style.display = 'inline-block';
+    };
+
+    window.resetSupplierDirForm = () => {
+        document.getElementById('edit-sup-id').value = '';
+        document.getElementById('dir-supplier-name').value = '';
+        document.getElementById('dir-poc-name').value = '';
+        document.getElementById('dir-poc-mobile').value = '';
+        document.getElementById('sup-form-title').innerText = 'Add New Supplier';
+        document.getElementById('cancel-sup-edit').style.display = 'none';
+    };
+
+    window.delDirectorySupplier = (id) => {
+        if(confirm('Delete supplier?')) remove(ref(db, 'directorySuppliers/' + id));
+    };
+
+    // --- Tab 3: Kits Inventory Logic ---
+    window.saveKit = () => {
+        const id = document.getElementById('edit-kit-id').value;
+        const kitName = document.getElementById('kit-name').value;
+        const currentQty = document.getElementById('kit-current-qty').value;
+        const minQty = document.getElementById('kit-min-qty').value;
+        const uom = document.getElementById('kit-uom').value;
+        const autoRequest = document.getElementById('kit-auto-request').checked;
+        const supplier = document.getElementById('kit-supplier-select').value;
+
+        if(!kitName) return alert('Kit name is required.');
+        const data = { kitName, currentQty, minQty, uom, autoRequest, supplier };
+
+        if(id) {
+            update(ref(db, 'kitsInventory/' + id), data).then(() => resetKitForm());
+        } else {
+            push(ref(db, 'kitsInventory'), data).then(() => resetKitForm());
+        }
+    };
+
+    function renderKitsInventory() {
+        const tbody = document.getElementById('kits-inventory-tbody');
+        tbody.innerHTML = kitsInventory.map(k => `
+            <tr>
+                <td>${k.kitName || ''}</td>
+                <td>${k.currentQty || ''}</td>
+                <td>${k.minQty || ''}</td>
+                <td>${k.uom || ''}</td>
+                <td>${k.autoRequest ? 'Yes' : 'No'}</td>
+                <td>${k.supplier || ''}</td>
+                <td>
+                    <button class="icon-btn" onclick="editKit('${k.id}')" title="Edit">✏️</button>
+                    <button class="icon-btn" onclick="delKit('${k.id}')" title="Delete">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    window.editKit = (id) => {
+        const kit = kitsInventory.find(x => x.id === id);
+        if(!kit) return;
+        document.getElementById('edit-kit-id').value = kit.id;
+        document.getElementById('kit-name').value = kit.kitName;
+        document.getElementById('kit-current-qty').value = kit.currentQty;
+        document.getElementById('kit-min-qty').value = kit.minQty;
+        document.getElementById('kit-uom').value = kit.uom;
+        document.getElementById('kit-auto-request').checked = kit.autoRequest;
+        document.getElementById('kit-supplier-select').value = kit.supplier;
+        document.getElementById('kit-form-title').innerText = 'Edit Kit';
+        document.getElementById('cancel-kit-edit').style.display = 'inline-block';
+    };
+
+    window.resetKitForm = () => {
+        document.getElementById('edit-kit-id').value = '';
+        document.getElementById('kit-name').value = '';
+        document.getElementById('kit-current-qty').value = '';
+        document.getElementById('kit-min-qty').value = '';
+        document.getElementById('kit-uom').value = '';
+        document.getElementById('kit-auto-request').checked = false;
+        document.getElementById('kit-supplier-select').value = '';
+        document.getElementById('kit-form-title').innerText = 'Add New Kit';
+        document.getElementById('cancel-kit-edit').style.display = 'none';
+    };
+
+    window.delKit = (id) => {
+        if(confirm('Delete kit?')) remove(ref(db, 'kitsInventory/' + id));
+    };
+
+    // --- Tab 4: Inventory Orders Logic ---
+    window.saveOrder = () => {
+        const id = document.getElementById('edit-order-id').value;
+        const kitName = document.getElementById('order-kit-select').value;
+        const orderDate = document.getElementById('order-date').value;
+        const supplier = document.getElementById('order-supplier-select').value;
+        const orderBy = document.getElementById('order-by-select').value;
+        const expectedArrival = document.getElementById('order-arrival-date').value;
+
+        if(!kitName) return alert('Kit name is required.');
+        const data = { kitName, orderDate, supplier, orderBy, expectedArrival };
+
+        if(id) {
+            update(ref(db, 'inventoryOrders/' + id), data).then(() => resetOrderForm());
+        } else {
+            push(ref(db, 'inventoryOrders'), data).then(() => resetOrderForm());
+        }
+    };
+
+    function renderInventoryOrders() {
+        const tbody = document.getElementById('inventory-orders-tbody');
+        tbody.innerHTML = inventoryOrders.map(o => `
+            <tr>
+                <td>${o.kitName || ''}</td>
+                <td>${o.orderDate || ''}</td>
+                <td>${o.supplier || ''}</td>
+                <td>${o.orderBy || ''}</td>
+                <td>${o.expectedArrival || ''}</td>
+                <td>
+                    <button class="icon-btn" onclick="editOrder('${o.id}')" title="Edit">✏️</button>
+                    <button class="icon-btn" onclick="delOrder('${o.id}')" title="Delete">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    window.editOrder = (id) => {
+        const order = inventoryOrders.find(x => x.id === id);
+        if(!order) return;
+        document.getElementById('edit-order-id').value = order.id;
+        document.getElementById('order-kit-select').value = order.kitName;
+        document.getElementById('order-date').value = order.orderDate;
+        document.getElementById('order-supplier-select').value = order.supplier;
+        document.getElementById('order-by-select').value = order.orderBy;
+        document.getElementById('order-arrival-date').value = order.expectedArrival;
+        document.getElementById('order-form-title').innerText = 'Edit Order';
+        document.getElementById('cancel-order-edit').style.display = 'inline-block';
+    };
+
+    window.resetOrderForm = () => {
+        document.getElementById('edit-order-id').value = '';
+        document.getElementById('order-kit-select').value = '';
+        document.getElementById('order-date').value = '';
+        document.getElementById('order-supplier-select').value = '';
+        document.getElementById('order-by-select').value = '';
+        document.getElementById('order-arrival-date').value = '';
+        document.getElementById('order-form-title').innerText = 'Submit New Order';
+        document.getElementById('cancel-order-edit').style.display = 'none';
+    };
+
+    window.delOrder = (id) => {
+        if(confirm('Delete order?')) remove(ref(db, 'inventoryOrders/' + id));
+    };
+
+    // Helper to dynamically populate dropdowns from existing data sources
+    function populateDropdowns() {
+        // Populate Kits Dropdown for Orders
+        const kitSelect = document.getElementById('order-kit-select');
+        kitSelect.innerHTML = '<option value="">Select Kit...</option>' + 
+            kitsInventory.map(k => `<option value="${k.kitName}">${k.kitName}</option>`).join('');
+
+        // Populate Suppliers Dropdown for Kits Inventory
+        const kitSupSelect = document.getElementById('kit-supplier-select');
+        kitSupSelect.innerHTML = '<option value="">Select Supplier...</option>' + 
+            directorySuppliers.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+
+        // Populate Suppliers Dropdown for Orders (Concatenation of Supplier Name and POC Name)
+        const orderSupSelect = document.getElementById('order-supplier-select');
+        orderSupSelect.innerHTML = '<option value="">Select Supplier & POC...</option>' + 
+            directorySuppliers.map(s => {
+                const combined = `${s.name || ''} - ${s.pocName || ''}`;
+                return `<option value="${combined}">${combined}</option>`;
+            }).join('');
+    }
+
+    // Existing Comparison Grid Actions
     window.toggleRow = (id) => {
         const row = document.getElementById(`row-${id}`);
         const btn = row.querySelector('.edit-btn');
