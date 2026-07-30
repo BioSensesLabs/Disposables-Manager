@@ -32,6 +32,14 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
+
+        /* Custom Dropdown Checkbox Styles */
+        .custom-dropdown { position: relative; width: 100%; margin-bottom: 10px; }
+        .dropdown-select-box { background: white; border: 1px solid #ddd; border-radius: 5px; padding: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 13px; min-height: 38px; box-sizing: border-box; }
+        .dropdown-list-container { display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-radius: 5px; max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 2px; }
+        .dropdown-list-container.open { display: block; }
+        .dropdown-option-item { padding: 8px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+        .dropdown-option-item:hover { background: #f1f1f1; }
     </style>
 </head>
 <body>
@@ -202,9 +210,16 @@
             <input type="hidden" id="edit-order-id">
             <div class="form-row">
                 <div>
-                    <label style="font-size:12px; font-weight:600;">Kit Names (Hold Ctrl/Cmd to multi-select)</label>
-                    <select id="order-kit-select" class="form-control" multiple style="height: 100px;">
-                    </select>
+                    <label style="font-size:12px; font-weight:600;">Kit Names</label>
+                    <div class="custom-dropdown" id="order-kit-dropdown">
+                        <div class="dropdown-select-box" onclick="toggleDropdown()">
+                            <span id="dropdown-selected-label" style="color: #555;">Select Kits...</span>
+                            <span>▼</span>
+                        </div>
+                        <div class="dropdown-list-container" id="dropdown-options-list">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
                 </div>
                 <div>
                     <label style="font-size:12px; font-weight:600;">Order Date</label>
@@ -284,6 +299,33 @@
     onValue(ref(db, 'directorySuppliers'), (s) => { const d = s.val() || {}; directorySuppliers = Object.keys(d).map(id => ({ id, ...d[id] })); renderDirectorySuppliers(); populateDropdowns(); });
     onValue(ref(db, 'kitsInventory'), (s) => { const d = s.val() || {}; kitsInventory = Object.keys(d).map(id => ({ id, ...d[id] })); renderKitsInventory(); populateDropdowns(); });
     onValue(ref(db, 'inventoryOrders'), (s) => { const d = s.val() || {}; inventoryOrders = Object.keys(d).map(id => ({ id, ...d[id] })); renderInventoryOrders(); });
+
+    // Custom Multi-Select Dropdown Controls
+    window.toggleDropdown = () => {
+        const list = document.getElementById('dropdown-options-list');
+        list.classList.toggle('open');
+    };
+
+    // Close dropdown when clicking outside
+    window.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('order-kit-dropdown');
+        if (dropdown && !dropdown.contains(e.target)) {
+            document.getElementById('dropdown-options-list').classList.remove('open');
+        }
+    });
+
+    window.updateDropdownLabel = () => {
+        const checkboxes = document.querySelectorAll('.kit-checkbox:checked');
+        const label = document.getElementById('dropdown-selected-label');
+        if (checkboxes.length === 0) {
+            label.innerText = 'Select Kits...';
+            label.style.color = '#555';
+        } else {
+            const names = Array.from(checkboxes).map(cb => cb.value);
+            label.innerText = names.join(', ');
+            label.style.color = '#333';
+        }
+    };
 
     // Tab Switching Function
     window.switchTab = (tabId, btn) => {
@@ -482,8 +524,8 @@
     // --- Tab 4: Inventory Orders Logic ---
     window.saveOrder = () => {
         const id = document.getElementById('edit-order-id').value;
-        const kitSelectElement = document.getElementById('order-kit-select');
-        const selectedKitNames = Array.from(kitSelectElement.selectedOptions).map(option => option.value);
+        const checkboxes = document.querySelectorAll('.kit-checkbox:checked');
+        const selectedKitNames = Array.from(checkboxes).map(cb => cb.value);
         const orderDate = document.getElementById('order-date').value;
         const supplier = document.getElementById('order-supplier-select').value;
         const orderBy = document.getElementById('order-by-select').value;
@@ -521,12 +563,11 @@
         if(!order) return;
         document.getElementById('edit-order-id').value = order.id;
         
-        // Handle multiselect selection setup
-        const kitSelectElement = document.getElementById('order-kit-select');
         const orderKits = (order.kitName || '').split(', ').map(k => k.trim());
-        Array.from(kitSelectElement.options).forEach(opt => {
-            opt.selected = orderKits.includes(opt.value);
+        document.querySelectorAll('.kit-checkbox').forEach(cb => {
+            cb.checked = orderKits.includes(cb.value);
         });
+        updateDropdownLabel();
 
         document.getElementById('order-date').value = order.orderDate;
         document.getElementById('order-supplier-select').value = order.supplier;
@@ -538,8 +579,8 @@
 
     window.resetOrderForm = () => {
         document.getElementById('edit-order-id').value = '';
-        const kitSelectElement = document.getElementById('order-kit-select');
-        Array.from(kitSelectElement.options).forEach(opt => opt.selected = false);
+        document.querySelectorAll('.kit-checkbox').forEach(cb => cb.checked = false);
+        updateDropdownLabel();
         document.getElementById('order-date').value = '';
         document.getElementById('order-supplier-select').value = '';
         document.getElementById('order-by-select').value = '';
@@ -554,9 +595,15 @@
 
     // Helper to dynamically populate dropdowns from existing data sources
     function populateDropdowns() {
-        // Populate Kits Dropdown for Orders (Multi-select)
-        const kitSelect = document.getElementById('order-kit-select');
-        kitSelect.innerHTML = kitsInventory.map(k => `<option value="${k.kitName}">${k.kitName}</option>`).join('');
+        // Populate Kits Custom Checkbox Dropdown for Orders
+        const listContainer = document.getElementById('dropdown-options-list');
+        listContainer.innerHTML = kitsInventory.map(k => `
+            <label class="dropdown-option-item" onclick="event.stopPropagation();">
+                <input type="checkbox" class="kit-checkbox" value="${k.kitName}" onchange="updateDropdownLabel()">
+                ${k.kitName}
+            </label>
+        `).join('');
+        updateDropdownLabel();
 
         // Populate Suppliers Dropdown for Kits Inventory & Orders (Concatenation of Supplier Name and POC Name)
         const supplierOptionsHTML = '<option value="">Select Supplier & POC...</option>' + 
