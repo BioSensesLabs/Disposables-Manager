@@ -250,6 +250,22 @@
                     <label style="font-size:12px; font-weight:600;">Expected Arrival Date</label>
                     <input type="date" id="order-arrival-date" class="form-control">
                 </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600;">Status</label>
+                    <select id="order-status-select" class="form-control">
+                        <option value="Pending Submission">Pending Submission</option>
+                        <option value="Submitted">Submitted</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Delayed">Delayed</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div style="grid-column: 1 / -1;">
+                    <label style="font-size:12px; font-weight:600;">Comments</label>
+                    <textarea id="order-comments" class="form-control" placeholder="Enter comments here..." rows="2" style="resize: vertical;"></textarea>
+                </div>
             </div>
             <button class="btn" style="background:var(--secondary-color)" onclick="saveOrder()">Submit Order</button>
             <button class="btn" style="background:#95a5a6; display:none;" id="cancel-order-edit" onclick="resetOrderForm()">Cancel</button>
@@ -264,6 +280,8 @@
                         <th>Supplier</th>
                         <th>Order By</th>
                         <th>Expected Arrival Date</th>
+                        <th>Status</th>
+                        <th>Comments</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -338,7 +356,7 @@
     function render() {
         document.getElementById('supplier-list').innerHTML = masterSuppliers.map(s => 
             `<div style="display:flex; justify-content:space-between; margin:5px 0;">${s} <button onclick="delSup('${s}')" style="background:none; border:none; color:red; cursor:pointer;">x</button></div>`).join('');
-        
+         
         document.getElementById('mapping-fields').innerHTML = masterSuppliers.map(s => 
             `<div class="mapping-grid"><span>${s}</span><input id="uom-${sanitizeKey(s)}" placeholder="UOM"><input id="price-${sanitizeKey(s)}" placeholder="Price"></div>`).join('');
 
@@ -530,9 +548,11 @@
         const supplier = document.getElementById('order-supplier-select').value;
         const orderBy = document.getElementById('order-by-select').value;
         const expectedArrival = document.getElementById('order-arrival-date').value;
+        const status = document.getElementById('order-status-select').value;
+        const comments = document.getElementById('order-comments').value;
 
         if(selectedKitNames.length === 0) return alert('Please select at least one kit.');
-        const data = { kitName: selectedKitNames.join(', '), orderDate, supplier, orderBy, expectedArrival };
+        const data = { kitName: selectedKitNames.join(', '), orderDate, supplier, orderBy, expectedArrival, status, comments };
 
         if(id) {
             update(ref(db, 'inventoryOrders/' + id), data).then(() => resetOrderForm());
@@ -550,6 +570,8 @@
                 <td>${o.supplier || ''}</td>
                 <td>${o.orderBy || ''}</td>
                 <td>${o.expectedArrival || ''}</td>
+                <td>${o.status || 'Pending Submission'}</td>
+                <td>${o.comments || ''}</td>
                 <td>
                     <button class="icon-btn" onclick="editOrder('${o.id}')" title="Edit">✏️</button>
                     <button class="icon-btn" onclick="delOrder('${o.id}')" title="Delete">🗑️</button>
@@ -569,10 +591,12 @@
         });
         updateDropdownLabel();
 
-        document.getElementById('order-date').value = order.orderDate;
-        document.getElementById('order-supplier-select').value = order.supplier;
-        document.getElementById('order-by-select').value = order.orderBy;
-        document.getElementById('order-arrival-date').value = order.expectedArrival;
+        document.getElementById('order-date').value = order.orderDate || '';
+        document.getElementById('order-supplier-select').value = order.supplier || '';
+        document.getElementById('order-by-select').value = order.orderBy || '';
+        document.getElementById('order-arrival-date').value = order.expectedArrival || '';
+        document.getElementById('order-status-select').value = order.status || 'Pending Submission';
+        document.getElementById('order-comments').value = order.comments || '';
         document.getElementById('order-form-title').innerText = 'Edit Order';
         document.getElementById('cancel-order-edit').style.display = 'inline-block';
     };
@@ -585,6 +609,8 @@
         document.getElementById('order-supplier-select').value = '';
         document.getElementById('order-by-select').value = '';
         document.getElementById('order-arrival-date').value = '';
+        document.getElementById('order-status-select').value = 'Pending Submission';
+        document.getElementById('order-comments').value = '';
         document.getElementById('order-form-title').innerText = 'Submit New Order';
         document.getElementById('cancel-order-edit').style.display = 'none';
     };
@@ -597,102 +623,25 @@
     function populateDropdowns() {
         // Populate Kits Custom Checkbox Dropdown for Orders
         const listContainer = document.getElementById('dropdown-options-list');
-        listContainer.innerHTML = kitsInventory.map(k => `
-            <label class="dropdown-option-item" onclick="event.stopPropagation();">
-                <input type="checkbox" class="kit-checkbox" value="${k.kitName}" onchange="updateDropdownLabel()">
-                ${k.kitName}
-            </label>
-        `).join('');
-        updateDropdownLabel();
+        if (listContainer) {
+            listContainer.innerHTML = kitsInventory.map(k => `
+                <label class="dropdown-option-item">
+                    <input type="checkbox" class="kit-checkbox" value="${k.kitName}" onchange="updateDropdownLabel()">
+                    ${k.kitName}
+                </label>
+            `).join('');
+        }
 
-        // Populate Suppliers Dropdown for Kits Inventory & Orders (Concatenation of Supplier Name and POC Name)
-        const supplierOptionsHTML = '<option value="">Select Supplier & POC...</option>' + 
-            directorySuppliers.map(s => {
-                const combined = `${s.name || ''} - ${s.pocName || ''}`;
-                return `<option value="${combined}">${combined}</option>`;
-            }).join('');
-
-        document.getElementById('kit-supplier-select').innerHTML = supplierOptionsHTML;
-        document.getElementById('order-supplier-select').innerHTML = supplierOptionsHTML;
+        // Populate Supplier Dropdowns
+        const supplierOptions = `<option value="">Select Supplier & POC...</option>` + 
+            directorySuppliers.map(s => `<option value="${s.name} (${s.pocName})">${s.name} (${s.pocName})</option>`).join('');
+        
+        const kitSupSelect = document.getElementById('kit-supplier-select');
+        const orderSupSelect = document.getElementById('order-supplier-select');
+        
+        if (kitSupSelect) kitSupSelect.innerHTML = supplierOptions;
+        if (orderSupSelect) orderSupSelect.innerHTML = supplierOptions;
     }
-
-    // Existing Comparison Grid Actions
-    window.toggleRow = (id) => {
-        const row = document.getElementById(`row-${id}`);
-        const btn = row.querySelector('.edit-btn');
-        const isEditing = btn.innerText === "💾";
-
-        if (isEditing) {
-            const updatedPrices = {};
-            row.querySelectorAll('.edit-mode').forEach(container => {
-                const uom = container.querySelector('.uom-in').value;
-                const price = container.querySelector('.price-in').value;
-                const supplier = container.querySelector('.uom-in').dataset.supplier;
-                updatedPrices[supplier] = { uom, price };
-            });
-            update(ref(db, 'disposables/' + id), { prices: updatedPrices });
-            btn.innerText = "✏️";
-        } else {
-            btn.innerText = "💾";
-        }
-        row.querySelectorAll('.view-mode').forEach(el => el.style.display = isEditing ? 'inline' : 'none');
-        row.querySelectorAll('.edit-mode').forEach(el => el.style.display = isEditing ? 'none' : 'block');
-    };
-
-    window.exportToExcel = () => {
-        const exportData = matrixDatabase.map(row => {
-            let flatRow = { Item: row.item };
-            masterSuppliers.forEach(s => {
-                flatRow[`${s} UOM`] = row.prices?.[sanitizeKey(s)]?.uom || '';
-                flatRow[`${s} Price`] = row.prices?.[sanitizeKey(s)]?.price || '';
-            });
-            return flatRow;
-        });
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Master Data");
-        XLSX.writeFile(wb, "Master_Supplier_Data.xlsx");
-    };
-
-    window.resetDatabase = () => {
-        if (confirm('CRITICAL: Are you sure you want to permanently delete ALL suppliers and items?')) {
-            if (confirm('This action cannot be undone. Confirm final reset?')) {
-                set(ref(db), null).then(() => { alert("Database has been reset."); });
-            }
-        }
-    };
-
-    window.addSupplier = () => { const v = document.getElementById('new-supplier').value; if(v) set(ref(db, 'suppliers'), [...masterSuppliers, sanitizeKey(v)]); };
-    window.delSup = (s) => { if(confirm('Delete supplier?')) set(ref(db, 'suppliers'), masterSuppliers.filter(x => x !== s)); };
-    window.addItem = () => {
-        const item = document.getElementById('new-item').value;
-        const prices = {};
-        masterSuppliers.forEach(s => {
-            const sk = sanitizeKey(s);
-            prices[sk] = { uom: document.getElementById(`uom-${sk}`)?.value || "", price: document.getElementById(`price-${sk}`)?.value || "" };
-        });
-        if(item) push(ref(db, 'disposables'), { item, prices });
-    };
-    window.delItem = (id) => { if(confirm('Delete item?')) remove(ref(db, 'disposables/' + id)); };
-
-    document.getElementById('file-input').addEventListener('change', (e) => {
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            const wb = XLSX.read(evt.target.result, { type: 'binary' });
-            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { range: 0 });
-            data.forEach(row => {
-                const itemName = row['Item'];
-                if (!itemName) return;
-                const prices = {};
-                masterSuppliers.forEach(s => {
-                    prices[sanitizeKey(s)] = { uom: row[`${s} UOM`] || "", price: row[`${s} Price`] || "" };
-                });
-                push(ref(db, 'disposables'), { item: itemName, prices });
-            });
-            alert("Upload Complete!");
-        };
-        reader.readAsBinaryString(e.target.files[0]);
-    });
 </script>
 </body>
 </html>
