@@ -48,7 +48,7 @@
     <header>
         <h2 style="margin:0;">Lab Inventory & Supplier Management</h2>
         <div>
-            <span id="sync-status" style="font-size: 12px; margin-right: 15px; opacity: 0.7;">🔄 Connecting...</span>
+            <span id="sync-status" style="font-size: 12px; margin-right: 15px; opacity: 0.7;"> Connecting...</span>
         </div>
     </header>
 
@@ -210,10 +210,10 @@
             <input type="hidden" id="edit-order-id">
             <div class="form-row">
                 <div>
-                    <label style="font-size:12px; font-weight:600;">Kit Names</label>
+                    <label style="font-size:12px; font-weight:600;">Disposables Items</label>
                     <div class="custom-dropdown" id="order-kit-dropdown">
                         <div class="dropdown-select-box" onclick="toggleDropdown()">
-                            <span id="dropdown-selected-label" style="color: #555;">Select Kits...</span>
+                            <span id="dropdown-selected-label" style="color: #555;">Select Disposables Items...</span>
                             <span>▼</span>
                         </div>
                         <div class="dropdown-list-container" id="dropdown-options-list">
@@ -275,7 +275,7 @@
             <table id="inventory-orders-table">
                 <thead>
                     <tr>
-                        <th>Kit Name(s)</th>
+                        <th>Disposables Item(s)</th>
                         <th>Order Date</th>
                         <th>Supplier</th>
                         <th>Order By</th>
@@ -312,10 +312,10 @@
     const sanitizeKey = (key) => key.replace(/[.#$/[\]]/g, '').trim();
 
     // Firebase Listeners
-    onValue(ref(db, 'suppliers'), (s) => { masterSuppliers = s.val() || []; render(); document.getElementById('sync-status').innerText = "☁️ Firebase Synced"; });
-    onValue(ref(db, 'disposables'), (s) => { const d = s.val() || {}; matrixDatabase = Object.keys(d).map(id => ({ id, ...d[id] })); render(); });
+    onValue(ref(db, 'suppliers'), (s) => { masterSuppliers = s.val() || []; render(); document.getElementById('sync-status').innerText = " Firebase Synced"; });
+    onValue(ref(db, 'disposables'), (s) => { const d = s.val() || {}; matrixDatabase = Object.keys(d).map(id => ({ id, ...d[id] })); render(); populateDropdowns(); });
     onValue(ref(db, 'directorySuppliers'), (s) => { const d = s.val() || {}; directorySuppliers = Object.keys(d).map(id => ({ id, ...d[id] })); renderDirectorySuppliers(); populateDropdowns(); });
-    onValue(ref(db, 'kitsInventory'), (s) => { const d = s.val() || {}; kitsInventory = Object.keys(d).map(id => ({ id, ...d[id] })); renderKitsInventory(); populateDropdowns(); });
+    onValue(ref(db, 'kitsInventory'), (s) => { const d = s.val() || {}; kitsInventory = Object.keys(d).map(id => ({ id, ...d[id] })); renderKitsInventory(); });
     onValue(ref(db, 'inventoryOrders'), (s) => { const d = s.val() || {}; inventoryOrders = Object.keys(d).map(id => ({ id, ...d[id] })); renderInventoryOrders(); });
 
     // Custom Multi-Select Dropdown Controls
@@ -336,7 +336,7 @@
         const checkboxes = document.querySelectorAll('.kit-checkbox:checked');
         const label = document.getElementById('dropdown-selected-label');
         if (checkboxes.length === 0) {
-            label.innerText = 'Select Kits...';
+            label.innerText = 'Select Disposables Items...';
             label.style.color = '#555';
         } else {
             const names = Array.from(checkboxes).map(cb => cb.value);
@@ -374,8 +374,8 @@
                             </div>
                         </td>`).join('')}
                     <td>
-                        <button class="icon-btn edit-btn" onclick="toggleRow('${row.id}')" title="Edit">✏️</button>
-                        <button class="icon-btn" onclick="delItem('${row.id}')" title="Delete">🗑️</button>
+                        <button class="icon-btn edit-btn" onclick="toggleRow('${row.id}')" title="Edit"></button>
+                        <button class="icon-btn" onclick="delItem('${row.id}')" title="Delete"></button>
                     </td>
                 </tr>`).join('');
     }
@@ -405,8 +405,8 @@
                 <td>${s.pocName || ''}</td>
                 <td>${s.mobile || ''}</td>
                 <td>
-                    <button class="icon-btn" onclick="editDirectorySupplier('${s.id}')" title="Edit">✏️</button>
-                    <button class="icon-btn" onclick="delDirectorySupplier('${s.id}')" title="Delete">🗑️</button>
+                    <button class="icon-btn" onclick="editDirectorySupplier('${s.id}')" title="Edit"></button>
+                    <button class="icon-btn" onclick="delDirectorySupplier('${s.id}')" title="Delete"></button>
                 </td>
             </tr>
         `).join('');
@@ -473,8 +473,8 @@
                     <td>${k.autoRequest ? 'Yes' : 'No'}</td>
                     <td>${k.supplier || ''}</td>
                     <td>
-                        <button class="icon-btn" onclick="editKit('${k.id}')" title="Edit">✏️</button>
-                        <button class="icon-btn" onclick="delKit('${k.id}')" title="Delete">🗑️</button>
+                        <button class="icon-btn" onclick="editKit('${k.id}')" title="Edit"></button>
+                        <button class="icon-btn" onclick="delKit('${k.id}')" title="Delete"></button>
                     </td>
                 </tr>
             `;
@@ -543,7 +543,7 @@
     window.saveOrder = () => {
         const id = document.getElementById('edit-order-id').value;
         const checkboxes = document.querySelectorAll('.kit-checkbox:checked');
-        const selectedKitNames = Array.from(checkboxes).map(cb => cb.value);
+        const selectedItemNames = Array.from(checkboxes).map(cb => cb.value);
         const orderDate = document.getElementById('order-date').value;
         const supplier = document.getElementById('order-supplier-select').value;
         const orderBy = document.getElementById('order-by-select').value;
@@ -551,8 +551,8 @@
         const status = document.getElementById('order-status-select').value;
         const comments = document.getElementById('order-comments').value;
 
-        if(selectedKitNames.length === 0) return alert('Please select at least one kit.');
-        const data = { kitName: selectedKitNames.join(', '), orderDate, supplier, orderBy, expectedArrival, status, comments };
+        if(selectedItemNames.length === 0) return alert('Please select at least one disposable item.');
+        const data = { kitName: selectedItemNames.join(', '), orderDate, supplier, orderBy, expectedArrival, status, comments };
 
         if(id) {
             update(ref(db, 'inventoryOrders/' + id), data).then(() => resetOrderForm());
@@ -573,8 +573,8 @@
                 <td>${o.status || 'Pending Submission'}</td>
                 <td>${o.comments || ''}</td>
                 <td>
-                    <button class="icon-btn" onclick="editOrder('${o.id}')" title="Edit">✏️</button>
-                    <button class="icon-btn" onclick="delOrder('${o.id}')" title="Delete">🗑️</button>
+                    <button class="icon-btn" onclick="editOrder('${o.id}')" title="Edit"></button>
+                    <button class="icon-btn" onclick="delOrder('${o.id}')" title="Delete"></button>
                 </td>
             </tr>
         `).join('');
@@ -585,9 +585,9 @@
         if(!order) return;
         document.getElementById('edit-order-id').value = order.id;
         
-        const orderKits = (order.kitName || '').split(', ').map(k => k.trim());
+        const orderItems = (order.kitName || '').split(', ').map(k => k.trim());
         document.querySelectorAll('.kit-checkbox').forEach(cb => {
-            cb.checked = orderKits.includes(cb.value);
+            cb.checked = orderItems.includes(cb.value);
         });
         updateDropdownLabel();
 
@@ -621,13 +621,13 @@
 
     // Helper to dynamically populate dropdowns from existing data sources
     function populateDropdowns() {
-        // Populate Kits Custom Checkbox Dropdown for Orders
+        // Populate Disposables Items Custom Checkbox Dropdown for Orders from matrixDatabase (Master Supplier Comparison page items)
         const listContainer = document.getElementById('dropdown-options-list');
         if (listContainer) {
-            listContainer.innerHTML = kitsInventory.map(k => `
+            listContainer.innerHTML = matrixDatabase.map(item => `
                 <label class="dropdown-option-item">
-                    <input type="checkbox" class="kit-checkbox" value="${k.kitName}" onchange="updateDropdownLabel()">
-                    ${k.kitName}
+                    <input type="checkbox" class="kit-checkbox" value="${item.item}" onchange="updateDropdownLabel()">
+                    ${item.item}
                 </label>
             `).join('');
         }
