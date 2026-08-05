@@ -55,13 +55,13 @@
 
     <!-- Main Navigation Tabs -->
     <div class="nav-tabs">
-        <button class="tab-btn active" onclick="switchTab('comparisonTab', this)">Master Supplier Comparison</button>
+        <button class="tab-btn active" onclick="switchTab('comparisonTab', this)">Disposables comparison</button>
         <button class="tab-btn" onclick="switchTab('suppliersTab', this)">Suppliers Directory</button>
         <button class="tab-btn" onclick="switchTab('kitsTab', this)">Kits Inventory</button>
         <button class="tab-btn" onclick="switchTab('ordersTab', this)">Inventory Orders</button>
     </div>
 
-    <!-- TAB 1: MASTER SUPPLIER COMPARISON -->
+    <!-- TAB 1: DISPOSABLES COMPARISON -->
     <div id="comparisonTab" class="tab-content active">
         <div style="margin-bottom: 15px; text-align: right;">
             <button class="btn" style="background:var(--info-color)" onclick="document.getElementById('file-input').click()">Import Excel</button>
@@ -372,7 +372,7 @@
         btn.classList.add('active');
     };
 
-    // --- Tab 1: Master Supplier Comparison Logic ---
+    // --- Tab 1: Disposables Comparison Logic ---
     window.addSupplier = () => {
         const oldName = document.getElementById('edit-master-sup-old-name').value;
         const name = document.getElementById('new-supplier').value.trim();
@@ -384,7 +384,6 @@
             const idx = masterSuppliers.indexOf(oldName);
             if(idx !== -1) masterSuppliers[idx] = name;
             
-            // Update prices keys inside matrixDatabase items
             matrixDatabase.forEach(item => {
                 if(item.prices && item.prices[sanitizeKey(oldName)]) {
                     item.prices[sanitizeKey(name)] = item.prices[sanitizeKey(oldName)];
